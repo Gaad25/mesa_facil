@@ -20,6 +20,7 @@ import {
   Info,
   Lightbulb,
   LockKeyhole,
+  LogOut,
   Minus,
   Moon,
   Plus,
@@ -44,6 +45,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ACTION_LABELS,
   APP_STORAGE_KEY,
@@ -913,6 +915,14 @@ function CardPicker({
 }) {
   const [rank, setRank] = useState<Rank | null>(selectedCard?.rank ?? null);
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="modalBackdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -984,6 +994,121 @@ function CardPicker({
             Remover esta carta
           </button>
         )}
+      </section>
+    </div>
+  );
+}
+
+function MobileCardsDock({
+  heroCards,
+  board,
+  onHeroCard,
+  onBoardCard,
+}: {
+  heroCards: Card[];
+  board: Card[];
+  onHeroCard: (index: number) => void;
+  onBoardCard: (index: number) => void;
+}) {
+  return (
+    <section className="mobileCardsDock" aria-label="Acesso rápido às cartas">
+      <div className="mobileCardGroup heroQuickCards">
+        <span>Sua mão</span>
+        <div>
+          {Array.from({ length: 2 }, (_, index) => (
+            <CardFace
+              key={index}
+              card={heroCards[index]}
+              size="small"
+              label={
+                heroCards[index]
+                  ? `Trocar sua carta ${index + 1}`
+                  : `Adicionar sua carta ${index + 1}`
+              }
+              onClick={() => onHeroCard(index)}
+            />
+          ))}
+        </div>
+      </div>
+      <i aria-hidden="true" />
+      <div className="mobileCardGroup boardQuickCards">
+        <span>Mesa</span>
+        <div>
+          {Array.from({ length: 5 }, (_, index) => (
+            <CardFace
+              key={index}
+              card={board[index]}
+              size="small"
+              label={
+                board[index]
+                  ? `Trocar carta ${index + 1} da mesa`
+                  : `Adicionar carta ${index + 1} da mesa`
+              }
+              onClick={() => onBoardCard(index)}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EndSessionDialog({
+  session,
+  hasUnfinishedHand,
+  onConfirm,
+  onClose,
+}: {
+  session: Session;
+  hasUnfinishedHand: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modalBackdrop confirmationBackdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <section
+        className="endSessionDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="end-session-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="endSessionIcon" aria-hidden="true">
+          <LogOut size={22} />
+        </span>
+        <span className="eyebrow">Encerrar mesa</span>
+        <h2 id="end-session-title">Terminou por hoje?</h2>
+        <p>
+          As {session.hands.length} mãos concluídas e o histórico continuarão
+          salvos neste aparelho.
+        </p>
+        {hasUnfinishedHand && (
+          <div className="unfinishedHandWarning">
+            <Info size={17} />
+            A mão atual ainda não foi concluída e será descartada.
+          </div>
+        )}
+        <div className="endSessionActions">
+          <button type="button" className="secondaryButton" onClick={onClose}>
+            Continuar jogando
+          </button>
+          <button type="button" className="dangerButton" onClick={onConfirm}>
+            <LogOut size={17} />
+            Encerrar mesa
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -1202,6 +1327,7 @@ function LiveTable({
   const [heroDecision, setHeroDecision] =
     useState<HeroDecisionSnapshot | null>(null);
   const [cardTarget, setCardTarget] = useState<CardTarget>(null);
+  const [showEndSession, setShowEndSession] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const handDraftKey = `mesa-certa:hand:${session.id}:${session.handNumber}`;
   const automaticEffectiveStack = Math.min(
@@ -1375,12 +1501,27 @@ function LiveTable({
     toCall,
   ]);
 
+  useEffect(() => {
+    if (!cardTarget && !showEndSession) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [cardTarget, showEndSession]);
+
   const setSelectedCard = (card: Card) => {
     if (!cardTarget) return;
     if (cardTarget.zone === "hero") {
       const next = [...heroCards];
       next[cardTarget.index] = card;
-      setHeroCards(next.filter(Boolean));
+      const compactCards = next.filter(Boolean);
+      setHeroCards(compactCards);
+      setCardTarget(
+        compactCards.length < 2
+          ? { zone: "hero", index: compactCards.length }
+          : null,
+      );
     } else {
       const next = [...board];
       next[cardTarget.index] = card;
@@ -1393,8 +1534,12 @@ function LiveTable({
         setPressure("unopened");
       }
       setBoard(nextBoard);
+      setCardTarget(
+        nextBoard.length > 0 && nextBoard.length < 3
+          ? { zone: "board", index: nextBoard.length }
+          : null,
+      );
     }
-    setCardTarget(null);
   };
 
   const removeSelectedCard = () => {
@@ -1533,6 +1678,28 @@ function LiveTable({
     notify("Mão salva. Posições atualizadas.");
   };
 
+  const endSession = () => {
+    window.localStorage.removeItem(handDraftKey);
+    setShowEndSession(false);
+    setCardTarget(null);
+    updateData((current) => {
+      if (!current.session) return current;
+      return {
+        ...current,
+        session: {
+          ...current.session,
+          active: false,
+        },
+      };
+    });
+    notify("Mesa encerrada. Seu histórico foi preservado.");
+  };
+
+  const hasUnfinishedHand =
+    heroCards.length > 0 ||
+    board.length > 0 ||
+    actions.length > 0 ||
+    result !== 0;
   const sessionLoss = Math.min(0, totalSessionResult(session));
   const stopLossReached =
     session.stopLoss > 0 && Math.abs(sessionLoss) >= session.stopLoss;
@@ -1549,25 +1716,42 @@ function LiveTable({
               Sua vez em <strong>{friendlyPosition(heroPosition)}</strong>
             </h1>
           </div>
-          <button
-            type="button"
-            className={`moodChip mood-${data.mood}`}
-            onClick={() => {
-              const next: Record<Mood, Mood> = {
-                focused: "tired",
-                tired: "tilted",
-                tilted: "focused",
-              };
-              updateData((current) => ({
-                ...current,
-                mood: next[current.mood],
-              }));
-            }}
-          >
-            <HeartPulse size={16} />
-            {MOOD_LABELS[data.mood]}
-          </button>
+          <div className="sessionHeaderActions">
+            <button
+              type="button"
+              className="endSessionButton"
+              onClick={() => setShowEndSession(true)}
+            >
+              <LogOut size={16} />
+              <span>Encerrar</span>
+            </button>
+            <button
+              type="button"
+              className={`moodChip mood-${data.mood}`}
+              onClick={() => {
+                const next: Record<Mood, Mood> = {
+                  focused: "tired",
+                  tired: "tilted",
+                  tilted: "focused",
+                };
+                updateData((current) => ({
+                  ...current,
+                  mood: next[current.mood],
+                }));
+              }}
+            >
+              <HeartPulse size={16} />
+              {MOOD_LABELS[data.mood]}
+            </button>
+          </div>
         </div>
+
+        <MobileCardsDock
+          heroCards={heroCards}
+          board={board}
+          onHeroCard={(index) => setCardTarget({ zone: "hero", index })}
+          onBoardCard={(index) => setCardTarget({ zone: "board", index })}
+        />
 
         {stopLossReached && (
           <div className="stopLossAlert" role="alert">
@@ -1866,21 +2050,106 @@ function LiveTable({
         </section>
       </aside>
 
-      {cardTarget && (
-        <CardPicker
-          target={cardTarget}
-          selectedCard={
-            cardTarget.zone === "hero"
-              ? heroCards[cardTarget.index]
-              : board[cardTarget.index]
-          }
-          usedCards={usedCards}
-          onSelect={setSelectedCard}
-          onRemove={removeSelectedCard}
-          onClose={() => setCardTarget(null)}
-        />
-      )}
+      {cardTarget &&
+        createPortal(
+          <CardPicker
+            key={`${cardTarget.zone}-${cardTarget.index}`}
+            target={cardTarget}
+            selectedCard={
+              cardTarget.zone === "hero"
+                ? heroCards[cardTarget.index]
+                : board[cardTarget.index]
+            }
+            usedCards={usedCards}
+            onSelect={setSelectedCard}
+            onRemove={removeSelectedCard}
+            onClose={() => setCardTarget(null)}
+          />,
+          document.body,
+        )}
+      {showEndSession &&
+        createPortal(
+          <EndSessionDialog
+            session={session}
+            hasUnfinishedHand={hasUnfinishedHand}
+            onConfirm={endSession}
+            onClose={() => setShowEndSession(false)}
+          />,
+          document.body,
+        )}
     </div>
+  );
+}
+
+function SessionEndedView({
+  session,
+  updateData,
+  notify,
+}: {
+  session: Session;
+  updateData: (updater: (current: AppData) => AppData) => void;
+  notify: (message: string) => void;
+}) {
+  const sessionResult = totalSessionResult(session);
+
+  return (
+    <section className="sessionEndedPage pageEnter">
+      <div className="sessionEndedMark">
+        <Check size={30} />
+      </div>
+      <span className="eyebrow gold">Mesa encerrada</span>
+      <h1>Sessão salva. Boa decisão parar no momento certo.</h1>
+      <p>
+        Você pode começar uma mesa nova ou reabrir esta sessão caso tenha
+        encerrado por engano.
+      </p>
+      <div className="sessionEndedStats">
+        <span>
+          <small>Mãos concluídas</small>
+          <strong>{session.hands.length}</strong>
+        </span>
+        <span>
+          <small>Resultado</small>
+          <strong className={sessionResult >= 0 ? "positive" : "negative"}>
+            {sessionResult >= 0 ? "+" : ""}
+            {formatMoney(sessionResult)}
+          </strong>
+        </span>
+        <span>
+          <small>Mesa</small>
+          <strong>{session.name}</strong>
+        </span>
+      </div>
+      <div className="sessionEndedActions">
+        <button
+          type="button"
+          className="primaryButton"
+          onClick={() => {
+            updateData((current) => ({ ...current, session: null }));
+            notify("Pronto para configurar uma nova mesa.");
+          }}
+        >
+          <Plus size={18} />
+          Criar nova mesa
+        </button>
+        <button
+          type="button"
+          className="secondaryButton"
+          onClick={() => {
+            updateData((current) => ({
+              ...current,
+              session: current.session
+                ? { ...current.session, active: true }
+                : null,
+            }));
+            notify("Mesa reaberta.");
+          }}
+        >
+          <RotateCcw size={17} />
+          Reabrir esta mesa
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -2776,9 +3045,15 @@ export default function PokerApp() {
 
       <div className="appContent">
         {tab === "table" &&
-          (data.session ? (
+          (data.session?.active ? (
             <LiveTable
               data={data}
+              updateData={updateData}
+              notify={notify}
+            />
+          ) : data.session ? (
+            <SessionEndedView
+              session={data.session}
               updateData={updateData}
               notify={notify}
             />
