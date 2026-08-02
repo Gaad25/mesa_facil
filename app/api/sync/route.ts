@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { CLOUD_SYNC_MAX_PAYLOAD_BYTES } from "@/lib/cloud-sync";
+import { normalizeTrainingProgress } from "@/lib/training/progress";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -224,6 +225,9 @@ function sanitizeSyncPayload(value: unknown): Record<string, unknown> | null {
     archivedHands: value.archivedHands,
     trainingAnswered: value.trainingAnswered,
     trainingCorrect: value.trainingCorrect,
+    ...(isRecord(value.trainingProgress)
+      ? { trainingProgress: normalizeTrainingProgress(value.trainingProgress) }
+      : {}),
     ...(typeof value.lastCloudSync === "string"
       ? { lastCloudSync: value.lastCloudSync }
       : {}),

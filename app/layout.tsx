@@ -1,5 +1,24 @@
 import type { Metadata, Viewport } from "next";
+import { Caprasimo, Figtree } from "next/font/google";
+import PwaRegistration from "@/components/pwa-registration";
 import "./globals.css";
+
+// Organic's two faces. Caprasimo ships a single weight by design — every
+// heading and every large number uses it; Figtree covers 400/600/700 and
+// nothing else, so `font-weight: 850` has nowhere left to resolve.
+const display = Caprasimo({
+  subsets: ["latin", "latin-ext"],
+  weight: "400",
+  display: "swap",
+  variable: "--font-display",
+});
+
+const sans = Figtree({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "600", "700"],
+  display: "swap",
+  variable: "--font-sans",
+});
 
 const publicSiteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -19,7 +38,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Mesa Certa",
   },
   formatDetection: {
@@ -61,15 +80,18 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#071612",
+  themeColor: "#f5ead8",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR">
-      <body>{children}</body>
+    <html lang="pt-BR" className={`${display.variable} ${sans.variable}`}>
+      <body>
+        {children}
+        <PwaRegistration />
+      </body>
     </html>
   );
 }

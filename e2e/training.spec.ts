@@ -1,0 +1,183 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type Page } from "@playwright/test";
+
+async function resetTraining(page: Page) {
+  await page.goto("/treino");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Aprenda jogando uma mão de cada vez." }),
+  ).toBeVisible();
+}
+
+async function startHeadsUpTraining(page: Page) {
+  await page.getByRole("button", { name: "1 adversário", exact: true }).click();
+  await page.getByRole("button", { name: /Sentar à mesa/ }).click();
+  await expect(page.getByText("Sua decisão")).toBeVisible();
+}
+
+function formatViolations(
+  violations: Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"],
+) {
+  return violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    targets: violation.nodes.flatMap((node) => node.target),
+  }));
+}
+
+test("oferece acesso direto ao jogo no menu principal", async ({ page }) => {
+  await page.goto("/");
+
+  const playLink = page.getByRole("link", { name: /Jogar poker/ });
+  await expect(playLink).toBeVisible();
+  await expect(playLink).toHaveAttribute("href", "/treino");
+  await playLink.click();
+
+  await expect(page).toHaveURL(/\/treino$/);
+  await expect(
+    page.getByRole("heading", { name: "Aprenda jogando uma mão de cada vez." }),
+  ).toBeVisible();
+});
+
+test("permite apagar e redigitar campos numéricos pelo teclado", async ({ page }) => {
+  await page.goto("/");
+
+  const smallBlind = page.getByRole("spinbutton", { name: /Small blind/ });
+  await smallBlind.focus();
+  await smallBlind.press("ControlOrMeta+A");
+  await smallBlind.press("Backspace");
+  await expect(smallBlind).toHaveValue("");
+
+  await smallBlind.press("Tab");
+  await expect(smallBlind).toHaveValue("5");
+
+  await smallBlind.focus();
+  await smallBlind.press("ControlOrMeta+A");
+  await smallBlind.press("Backspace");
+  await smallBlind.pressSequentially("25");
+  await expect(smallBlind).toHaveValue("25");
+  await smallBlind.press("Enter");
+  await expect(smallBlind).toHaveValue("25");
+
+  await page.goto("/treino");
+  const startingStack = page.getByRole("spinbutton", { name: "Stack inicial" });
+  await startingStack.focus();
+  await startingStack.press("ControlOrMeta+A");
+  await startingStack.press("Backspace");
+  await expect(startingStack).toHaveValue("");
+  await startingStack.pressSequentially("2500");
+  await startingStack.press("Tab");
+  await expect(startingStack).toHaveValue("2500");
+});
+
+test("inicia, conclui, revisa e restaura uma sessão de treino", async ({ page }) => {
+  await resetTraining(page);
+  await page.getByRole("button", { name: /Ver dashboard/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Seu dashboard de evolução" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Fechar dashboard" }).click();
+  await startHeadsUpTraining(page);
+
+  await page.getByRole("button", { name: "Fold", exact: true }).click();
+  const summary = page.getByRole("dialog");
+  await expect(summary).toBeVisible();
+  await expect(summary.getByText(/Mão 1 concluída|Sessão concluída/)).toBeVisible();
+
+  await summary.getByRole("button", { name: /Rever mão/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Reveja cada decisão da mão" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Fechar histórico" }).click();
+
+  await page.reload();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText(/Mesa de treino · (bots adaptativos|GTO aproximado)/)).toBeVisible();
+});
+
+test("mantém a mesa disponível depois de recarregar sem conexão", async ({
+  context,
+  page,
+}) => {
+  await resetTraining(page);
+  await startHeadsUpTraining(page);
+
+  await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready;
+    registration.active?.postMessage({
+      type: "CACHE_URLS",
+      urls: [window.location.pathname],
+    });
+    await new Promise<void>((resolve) => {
+      if (navigator.serviceWorker.controller) {
+        resolve();
+        return;
+      }
+      navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), {
+        once: true,
+      });
+    });
+  });
+
+  await page.waitForTimeout(500);
+  await context.setOffline(true);
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByText(/Mesa de treino · (bots adaptativos|GTO aproximado)/)).toBeVisible();
+    await expect(page.getByText("Sua decisão")).toBeVisible();
+  } finally {
+    await context.setOffline(false);
+  }
+});
+
+test("configura torneio com ante e exporta o progresso local", async ({ page }) => {
+  await resetTraining(page);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Exportar progresso/ }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^mesa-certa-progresso-\d{4}-\d{2}-\d{2}\.json$/);
+
+  await page.getByRole("button", { name: /Torneio regular/ }).click();
+  await expect(page.getByLabel("Stack inicial")).toHaveValue("3000");
+  await expect(page.getByLabel("Ante por jogador")).toHaveValue("2");
+  await page.getByRole("button", { name: "1 adversário", exact: true }).click();
+  await page.getByRole("button", { name: /Sentar à mesa/ }).click();
+
+  await expect(page.getByText("Nível 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("10/20 · 2", { exact: true })).toBeVisible();
+});
+
+test("@a11y não apresenta violações WCAG A/AA na configuração", async ({ page }) => {
+  await resetTraining(page);
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+
+  expect(formatViolations(results.violations)).toEqual([]);
+});
+
+test("@a11y não apresenta violações WCAG A/AA no dashboard", async ({ page }) => {
+  await resetTraining(page);
+  await page.getByRole("button", { name: /Ver dashboard/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Seu dashboard de evolução" }),
+  ).toBeVisible();
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+
+  expect(formatViolations(results.violations)).toEqual([]);
+});
+
+test("@a11y não apresenta violações WCAG A/AA na mesa ativa", async ({ page }) => {
+  await resetTraining(page);
+  await startHeadsUpTraining(page);
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+
+  expect(formatViolations(results.violations)).toEqual([]);
+});

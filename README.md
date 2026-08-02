@@ -11,6 +11,15 @@ responsável.
 - recomendações com equidade estimada, pot odds, textura do board, ranges, SPR
   e tamanho sugerido;
 - Copilot opcional, explicações simples e modo de treino;
+- mesa de treino offline contra 1 a 5 bots, perfis adversários personalizáveis,
+  ritmo ajustável, professor guiado, revisão por street, histórico com replay,
+  dashboard de evolução e exercícios adaptados aos pontos fracos;
+- bots com estratégias mistas, modo GTO aproximado e adaptação às tendências do
+  jogador sem acesso a cartas escondidas;
+- cash game, Sit & Go, torneio regular e turbo com stacks, blinds, antes e
+  níveis configuráveis;
+- exportação/importação JSON e sincronização do progresso de treino pelo cofre
+  privado existente;
 - histórico de mãos, diário de adversários, humor, stop-loss e banca;
 - rascunho da mão salvo no aparelho, instalação PWA e suporte offline;
 - backup privado opcional na nuvem, com recuperação e exclusão por código.
@@ -34,7 +43,16 @@ Validação:
 npm test
 npm run typecheck
 npm run build
+npx playwright install chromium # somente na primeira execução
+npm run test:e2e               # fluxo completo, offline e acessibilidade
+npm run test:a11y              # somente auditorias WCAG A/AA
 ```
+
+O workflow de qualidade executa typecheck, testes de domínio, fluxo E2E offline
+e auditoria de acessibilidade em cada pull request.
+
+Os detalhes e limites da estratégia dos bots estão em
+[`docs/ai-strategy.md`](docs/ai-strategy.md).
 
 ## Backup na nuvem
 

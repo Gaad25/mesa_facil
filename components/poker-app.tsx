@@ -23,6 +23,7 @@ import {
   LogOut,
   Minus,
   Moon,
+  Play,
   Plus,
   RotateCcw,
   Save,
@@ -46,6 +47,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { EditableNumberInput } from "@/components/editable-number-input";
 import {
   ACTION_LABELS,
   APP_STORAGE_KEY,
@@ -79,6 +81,19 @@ import {
   type Suit,
   type TablePosition,
 } from "@/lib/poker";
+import {
+  adaptiveTrainingQuestions,
+  recommendedTrainingFocus,
+} from "@/lib/training/curriculum";
+import {
+  createEmptyTrainingProgress,
+  normalizeTrainingProgress,
+} from "@/lib/training/progress";
+import { trainingProgressForSync } from "@/lib/training/progress-transfer";
+import {
+  loadTrainingProgress,
+  saveTrainingProgress,
+} from "@/lib/training/storage";
 
 type AppTab = "table" | "training" | "history" | "profile";
 type Pressure = "unopened" | "limp" | "raise" | "threeBet" | "allIn";
@@ -142,53 +157,6 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   média: "Média",
   baixa: "Baixa",
 };
-
-const TRAINING_QUESTIONS = [
-  {
-    eyebrow: "Posição",
-    question:
-      "Por que jogar no botão costuma ser melhor do que jogar nas primeiras posições?",
-    options: [
-      "Você age depois da maioria dos adversários",
-      "O botão sempre recebe cartas melhores",
-      "Você não precisa pagar apostas",
-    ],
-    correct: 0,
-    explanation:
-      "Agir por último traz mais informação antes de você tomar a decisão.",
-  },
-  {
-    eyebrow: "Pot odds",
-    question:
-      "O pote tem R$ 100 e custa R$ 25 para pagar. Qual é aproximadamente sua pot odd?",
-    options: ["20%", "25%", "33%"],
-    correct: 0,
-    explanation:
-      "Você investe R$ 25 para disputar um pote final de R$ 125: 25 ÷ 125 = 20%.",
-  },
-  {
-    eyebrow: "Draw",
-    question:
-      "No flop, um flush draw com 9 outs tem aproximadamente qual chance de completar até o river?",
-    options: ["18%", "36%", "54%"],
-    correct: 1,
-    explanation:
-      "A regra rápida é multiplicar os outs por 4 no flop: 9 × 4 ≈ 36%.",
-  },
-  {
-    eyebrow: "Disciplina",
-    question:
-      "Você perdeu dois potes grandes e está irritado. Qual é a melhor resposta?",
-    options: [
-      "Aumentar a agressividade para recuperar",
-      "Fazer uma pausa curta e reduzir decisões marginais",
-      "Jogar todas as mãos até ganhar uma",
-    ],
-    correct: 1,
-    explanation:
-      "Tilt aumenta erros. Uma pausa protege a banca e melhora a qualidade das decisões.",
-  },
-];
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -320,11 +288,10 @@ function Brand() {
   return (
     <div className="brand" aria-label="Mesa Certa">
       <span className="brandMark" aria-hidden="true">
-        <Spade size={19} strokeWidth={2.2} />
+        <Spade size={24} strokeWidth={2.75} />
       </span>
       <span>
-        <strong>Mesa</strong>
-        <em>Certa</em>
+        <strong>Mesa Certa</strong>
       </span>
     </div>
   );
@@ -347,7 +314,7 @@ function CopilotSwitch({
       onClick={() => onChange(!enabled)}
     >
       <span className="copilotPulse" aria-hidden="true">
-        <Sparkles size={14} />
+        <Sparkles size={16} />
       </span>
       <span className="copilotWords">
         <small>Copilot</small>
@@ -373,8 +340,15 @@ function TopBar({
     <header className="topBar">
       <Brand />
       <div className="topBarActions">
+        <a className="playPokerCta" href="/treino">
+          <Play size={16} fill="currentColor" aria-hidden="true" />
+          <span>
+            <strong>Jogar poker</strong>
+            <small>Modo offline</small>
+          </span>
+        </a>
         <span className={`connectionDot ${online ? "online" : ""}`}>
-          {online ? <Cloud size={14} /> : <CloudOffIcon />}
+          {online ? <Cloud size={16} /> : <CloudOffIcon />}
           <span>{online ? "Online" : "Offline"}</span>
         </span>
         <CopilotSwitch
@@ -387,7 +361,7 @@ function TopBar({
 }
 
 function CloudOffIcon() {
-  return <Cloud size={14} aria-hidden="true" className="cloudOff" />;
+  return <Cloud size={16} aria-hidden="true" className="cloudOff" />;
 }
 
 function BottomNav({
@@ -400,13 +374,20 @@ function BottomNav({
   handCount: number;
 }) {
   const items: Array<{
-    id: AppTab;
+    id: AppTab | "play";
     label: string;
     icon: ReactNode;
     badge?: number;
+    href?: string;
   }> = [
     { id: "table", label: "Mesa", icon: <Spade size={21} /> },
-    { id: "training", label: "Treino", icon: <Brain size={21} /> },
+    {
+      id: "play",
+      label: "Jogar",
+      icon: <Play size={21} fill="currentColor" />,
+      href: "/treino",
+    },
+    { id: "training", label: "Aprender", icon: <Brain size={21} /> },
     {
       id: "history",
       label: "Histórico",
@@ -418,21 +399,37 @@ function BottomNav({
 
   return (
     <nav className="bottomNav" aria-label="Navegação principal">
-      {items.map((item) => (
-        <button
-          type="button"
-          key={item.id}
-          className={active === item.id ? "active" : ""}
-          aria-current={active === item.id ? "page" : undefined}
-          onClick={() => onChange(item.id)}
-        >
-          <span className="navIcon">
-            {item.icon}
-            {!!item.badge && <small>{Math.min(99, item.badge)}</small>}
-          </span>
-          {item.label}
-        </button>
-      ))}
+      {items.map((item) => {
+        const content = (
+          <>
+            <span className="navIcon">
+              {item.icon}
+              {!!item.badge && <small>{Math.min(99, item.badge)}</small>}
+            </span>
+            {item.label}
+          </>
+        );
+
+        if (item.href) {
+          return (
+            <a key={item.id} className="playNavItem" href={item.href}>
+              {content}
+            </a>
+          );
+        }
+
+        return (
+          <button
+            type="button"
+            key={item.id}
+            className={active === item.id ? "active" : ""}
+            aria-current={active === item.id ? "page" : undefined}
+            onClick={() => onChange(item.id as AppTab)}
+          >
+            {content}
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -454,10 +451,8 @@ function CardFace({
       <span>{suitSymbol(card.suit)}</span>
     </>
   ) : (
-    <>
-      <Plus size={size === "small" ? 16 : 19} />
-      <small>carta</small>
-    </>
+    // Dashed slot, no caption — the 6px "carta" label is below the size floor.
+    <Plus size={size === "small" ? 16 : 24} strokeWidth={2.75} />
   );
 
   if (onClick) {
@@ -512,14 +507,14 @@ function NumberField({
       </span>
       <span className="numberInput">
         <small>{prefix}</small>
-        <input
-          type="number"
+        <EditableNumberInput
           inputMode="decimal"
           min={min}
+          max={1_000_000}
           step={step}
           value={value}
-          onChange={(event) =>
-            onChange(clampNumber(Number(event.target.value), min))
+          onValueChange={(nextValue) =>
+            onChange(clampNumber(nextValue, min))
           }
         />
       </span>
@@ -559,8 +554,10 @@ const DEFAULT_SETUP: SetupDraft = {
 
 function SetupTable({
   onStart,
+  onSimpleMode,
 }: {
   onStart: (session: Session) => void;
+  onSimpleMode: () => void;
 }) {
   const [draft, setDraft] = useState<SetupDraft>(DEFAULT_SETUP);
   const [step, setStep] = useState<1 | 2>(1);
@@ -618,7 +615,7 @@ function SetupTable({
     <section className="setupPage pageEnter">
       <div className="setupHero">
         <span className="eyebrow gold">
-          <Sparkles size={14} />
+          <Sparkles size={16} />
           Sua vantagem começa aqui
         </span>
         <h1>Monte a mesa uma vez.<br />Jogue sem perder o ritmo.</h1>
@@ -725,7 +722,7 @@ function SetupTable({
             </p>
             <div className="seatPicker">
               <div className="seatPickerFelt">
-                <Spade size={22} />
+                <Spade size={21} />
                 <span>Mesa {draft.playerCount}-max</span>
               </div>
               {Array.from({ length: draft.playerCount }, (_, index) => {
@@ -856,7 +853,253 @@ function SetupTable({
             <ChevronRight size={18} />
           </button>
         </div>
+        <div className="setupModeShortcut">
+          <div>
+            <Gauge size={18} />
+            <span>
+              <strong>Quer decidir sem configurar uma mesa?</strong>
+              <small>Informe só suas cartas, a mesa e o valor para jogar.</small>
+            </span>
+          </div>
+          <button type="button" onClick={onSimpleMode}>
+            Usar modo simplificado
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
+    </section>
+  );
+}
+
+function SimpleMode({
+  copilotEnabled,
+  onEnableCopilot,
+  onBack,
+}: {
+  copilotEnabled: boolean;
+  onEnableCopilot: () => void;
+  onBack: () => void;
+}) {
+  const [heroCards, setHeroCards] = useState<Card[]>([]);
+  const [board, setBoard] = useState<Card[]>([]);
+  const [amountToPlay, setAmountToPlay] = useState(0);
+  const [cardTarget, setCardTarget] = useState<CardTarget>(null);
+
+  const analysis = useMemo(() => {
+    if (heroCards.length !== 2 || ![0, 3, 4, 5].includes(board.length)) {
+      return null;
+    }
+
+    const safeAmount = Math.max(0, amountToPlay);
+    return analyzeSpot({
+      holeCards: heroCards,
+      board,
+      pot: safeAmount * 4,
+      callAmount: safeAmount,
+      effectiveStack: Math.max(100, safeAmount * 20),
+      opponents: 1,
+      position: "MIDDLE",
+      opponentStyle: "balanced",
+      preflopPressure: safeAmount > 0 ? "raised" : "none",
+      emotionalState: "calm",
+      bigBlind: Math.max(1, safeAmount),
+    });
+  }, [amountToPlay, board, heroCards]);
+
+  const usedCards = useMemo(
+    () => new Set([...heroCards, ...board].map(cardKey)),
+    [heroCards, board],
+  );
+
+  const setSelectedCard = (card: Card) => {
+    if (!cardTarget) return;
+    if (cardTarget.zone === "hero") {
+      const next = [...heroCards];
+      next[cardTarget.index] = card;
+      const compactCards = next.filter(Boolean);
+      setHeroCards(compactCards);
+      setCardTarget(
+        compactCards.length < 2
+          ? { zone: "hero", index: compactCards.length }
+          : null,
+      );
+      return;
+    }
+
+    const next = [...board];
+    next[cardTarget.index] = card;
+    const nextBoard = next.filter(Boolean);
+    setBoard(nextBoard);
+    setCardTarget(
+      nextBoard.length > 0 && nextBoard.length < 3
+        ? { zone: "board", index: nextBoard.length }
+        : null,
+    );
+  };
+
+  const removeSelectedCard = () => {
+    if (!cardTarget) return;
+    if (cardTarget.zone === "hero") {
+      setHeroCards((cards) =>
+        cards.filter((_, index) => index !== cardTarget.index),
+      );
+    } else {
+      setBoard((cards) =>
+        cards.filter((_, index) => index !== cardTarget.index),
+      );
+    }
+    setCardTarget(null);
+  };
+
+  const clearSimpleMode = () => {
+    setHeroCards([]);
+    setBoard([]);
+    setAmountToPlay(0);
+    setCardTarget(null);
+  };
+
+  const boardLabel =
+    board.length < 3
+      ? "Pré-flop"
+      : board.length === 3
+        ? "Flop"
+        : board.length === 4
+          ? "Turn"
+          : "River";
+
+  return (
+    <section className="simpleModePage pageEnter">
+      <div className="simpleModeHeader">
+        <div>
+          <span className="eyebrow gold">
+            <Gauge size={16} />
+            Entrada rápida
+          </span>
+          <h1>Cartas, valor e decisão.</h1>
+          <p>
+            Sem sessão, posições ou histórico: coloque as cartas conhecidas e
+            veja a melhor linha para esta jogada.
+          </p>
+        </div>
+        <div className="simpleModeHeaderActions">
+          <button type="button" className="secondaryButton" onClick={clearSimpleMode}>
+            <RotateCcw size={16} />
+            Limpar
+          </button>
+          <button type="button" className="secondaryButton" onClick={onBack}>
+            Configurar mesa completa
+          </button>
+        </div>
+      </div>
+
+      <div className="simpleModeLayout">
+        <section className="simpleModeForm surfaceCard">
+          <div className="simpleModeSectionHeader">
+            <div>
+              <span className="eyebrow">1 · Suas cartas</span>
+              <h2>O que você tem na mão?</h2>
+            </div>
+            <span className="simpleModeProgress">{heroCards.length}/2</span>
+          </div>
+          <div className="simpleHeroCards">
+            {Array.from({ length: 2 }, (_, index) => (
+              <CardFace
+                key={index}
+                card={heroCards[index]}
+                size="large"
+                label={
+                  heroCards[index]
+                    ? `Trocar carta ${index + 1}`
+                    : `Adicionar carta ${index + 1}`
+                }
+                onClick={() => setCardTarget({ zone: "hero", index })}
+              />
+            ))}
+          </div>
+
+          <div className="simpleModeDivider" />
+
+          <div className="simpleModeSectionHeader">
+            <div>
+              <span className="eyebrow">2 · Mesa</span>
+              <h2>Quais cartas já apareceram?</h2>
+            </div>
+            <span className="simpleModeProgress">{board.length}/5</span>
+          </div>
+          <div className="simpleBoardCards">
+            {Array.from({ length: 5 }, (_, index) => (
+              <CardFace
+                key={index}
+                card={board[index]}
+                size="medium"
+                label={
+                  board[index]
+                    ? `Trocar carta ${index + 1} da mesa`
+                    : `Adicionar carta ${index + 1} da mesa`
+                }
+                onClick={() => setCardTarget({ zone: "board", index })}
+              />
+            ))}
+          </div>
+          <span className="simpleBoardStage">{boardLabel} · deixe vazias as cartas que ainda não saíram</span>
+
+          <div className="simpleModeDivider" />
+
+          <div className="simpleModeAmount">
+            <div>
+              <span className="eyebrow">3 · Valor para jogar</span>
+              <h2>Quanto você precisa colocar agora?</h2>
+              <p>Use o valor adicional para pagar ou continuar na mão.</p>
+            </div>
+            <NumberField
+              label="Valor para jogar"
+              value={amountToPlay}
+              min={0}
+              onChange={setAmountToPlay}
+            />
+          </div>
+          <div className="simpleModeNote">
+            <Info size={16} />
+            A estimativa considera 1 adversário, posição neutra e um pote de
+            aproximadamente 4× o valor informado.
+          </div>
+        </section>
+
+        <aside className="simpleModeAdvice">
+          <AdviceCard
+            enabled={copilotEnabled}
+            analysis={analysis}
+            complete={
+              heroCards.length === 2 && [0, 3, 4, 5].includes(board.length)
+            }
+            onEnable={onEnableCopilot}
+          />
+          {!analysis && (
+            <div className="simpleModeHint surfaceCard">
+              <Sparkles size={16} />
+              <span>Preencha suas duas cartas e escolha 0, 3, 4 ou 5 cartas da mesa.</span>
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {cardTarget &&
+        createPortal(
+          <CardPicker
+            key={`${cardTarget.zone}-${cardTarget.index}`}
+            target={cardTarget}
+            selectedCard={
+              cardTarget.zone === "hero"
+                ? heroCards[cardTarget.index]
+                : board[cardTarget.index]
+            }
+            usedCards={usedCards}
+            onSelect={setSelectedCard}
+            onRemove={removeSelectedCard}
+            onClose={() => setCardTarget(null)}
+          />,
+          document.body,
+        )}
     </section>
   );
 }
@@ -883,7 +1126,7 @@ function TableSeat({
       type="button"
       className={`tableSeat ${hero ? "hero" : ""} ${
         selected ? "selected" : ""
-      }`}
+      } ${role === "BTN" ? "btn" : ""}`}
       style={style}
       onClick={onClick}
       aria-label={`${name}, ${role ?? "sem posição"}, ${formatMoney(stack)}`}
@@ -943,7 +1186,7 @@ function CardPicker({
             </h2>
           </div>
           <IconButton label="Fechar seletor" onClick={onClose}>
-            <X size={20} />
+            <X size={21} />
           </IconButton>
         </div>
 
@@ -1086,7 +1329,7 @@ function EndSessionDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="endSessionIcon" aria-hidden="true">
-          <LogOut size={22} />
+          <LogOut size={21} />
         </span>
         <span className="eyebrow">Encerrar mesa</span>
         <h2 id="end-session-title">Terminou por hoje?</h2>
@@ -1096,7 +1339,7 @@ function EndSessionDialog({
         </p>
         {hasUnfinishedHand && (
           <div className="unfinishedHandWarning">
-            <Info size={17} />
+            <Info size={16} />
             A mão atual ainda não foi concluída e será descartada.
           </div>
         )}
@@ -1105,7 +1348,7 @@ function EndSessionDialog({
             Continuar jogando
           </button>
           <button type="button" className="dangerButton" onClick={onConfirm}>
-            <LogOut size={17} />
+            <LogOut size={16} />
             Encerrar mesa
           </button>
         </div>
@@ -1146,7 +1389,7 @@ function AdviceCard({
     return (
       <section className="adviceCard paused">
         <div className="adviceIcon">
-          <EyeOff size={22} />
+          <EyeOff size={21} />
         </div>
         <div>
           <span className="eyebrow">Copilot pausado</span>
@@ -1156,7 +1399,7 @@ function AdviceCard({
           </p>
         </div>
         <button type="button" className="inlineButton" onClick={onEnable}>
-          <Eye size={17} /> Ativar agora
+          <Eye size={16} /> Ativar agora
         </button>
       </section>
     );
@@ -1166,7 +1409,7 @@ function AdviceCard({
     return (
       <section className="adviceCard waiting">
         <div className="adviceIcon">
-          <Sparkles size={22} />
+          <Sparkles size={21} />
         </div>
         <div>
           <span className="eyebrow">Copilot pronto</span>
@@ -1190,7 +1433,7 @@ function AdviceCard({
     <section className={`adviceCard live action-${analysis.action.toLowerCase()}`}>
       <div className="adviceTop">
         <span className="eyebrow">
-          <Sparkles size={13} />
+          <Sparkles size={16} />
           Melhor decisão agora
         </span>
         <span className="confidencePill">
@@ -1202,11 +1445,11 @@ function AdviceCard({
       <div className="adviceDecision">
         <div className="adviceIcon">
           {analysis.action === "FOLD" ? (
-            <X size={23} />
+            <X size={24} />
           ) : analysis.action === "CHECK" ? (
-            <Check size={23} />
+            <Check size={24} />
           ) : (
-            <Target size={23} />
+            <Target size={24} />
           )}
         </div>
         <div>
@@ -1235,11 +1478,19 @@ function AdviceCard({
         <span style={{ width: `${Math.round(analysis.equity)}%` }} />
         <i style={{ left: `${Math.round(analysis.potOdds)}%` }} />
       </div>
+      <p className="equityLegend">
+        <span className="legendEquity">
+          Sua equidade {Math.round(analysis.equity)}%
+        </span>
+        <span className="legendOdds">
+          Pot odds {Math.round(analysis.potOdds)}%
+        </span>
+      </p>
       <details className="explanation">
         <summary>
-          <Lightbulb size={17} />
+          <Lightbulb size={16} />
           Entender esta decisão
-          <ChevronRight size={17} />
+          <ChevronRight size={16} />
         </summary>
         <div>
           <p>
@@ -1290,10 +1541,12 @@ function LiveTable({
   data,
   updateData,
   notify,
+  onSimpleMode,
 }: {
   data: AppData;
   updateData: (updater: (current: AppData) => AppData) => void;
   notify: (message: string) => void;
+  onSimpleMode: () => void;
 }) {
   const session = data.session!;
   const roles = useMemo(() => getSeatRoles(session), [session]);
@@ -1719,6 +1972,14 @@ function LiveTable({
           <div className="sessionHeaderActions">
             <button
               type="button"
+              className="simpleModeEntry"
+              onClick={onSimpleMode}
+            >
+              <Gauge size={16} />
+              <span>Simplificado</span>
+            </button>
+            <button
+              type="button"
               className="endSessionButton"
               onClick={() => setShowEndSession(true)}
             >
@@ -1755,7 +2016,7 @@ function LiveTable({
 
         {stopLossReached && (
           <div className="stopLossAlert" role="alert">
-            <ShieldCheck size={19} />
+            <ShieldCheck size={18} />
             <div>
               <strong>Seu limite de perda foi atingido.</strong>
               <span>Uma pausa agora protege sua banca e suas decisões.</span>
@@ -1765,8 +2026,6 @@ function LiveTable({
 
         <div className="pokerTableWrap">
           <div className="pokerTable">
-            <div className="feltTexture" />
-            <div className="tableRail" />
             <div className="tableCenter">
               <span className="potLabel">Pote</span>
               <strong>{formatMoney(pot)}</strong>
@@ -1885,7 +2144,7 @@ function LiveTable({
 
           <div className="opponentsRow">
             <span>
-              <Users size={17} />
+              <Users size={16} />
               Adversários na mão
             </span>
             <div>
@@ -1893,7 +2152,7 @@ function LiveTable({
                 label="Diminuir adversários"
                 onClick={() => setOpponents(Math.max(1, opponents - 1))}
               >
-                <Minus size={17} />
+                <Minus size={16} />
               </IconButton>
               <strong>{opponents}</strong>
               <IconButton
@@ -1908,7 +2167,7 @@ function LiveTable({
                   )
                 }
               >
-                <Plus size={17} />
+                <Plus size={16} />
               </IconButton>
             </div>
           </div>
@@ -2044,7 +2303,7 @@ function LiveTable({
             Salvar e ir para a próxima
           </button>
           <small className="rotationHint">
-            <RotateCcw size={14} />
+            <RotateCcw size={16} />
             BTN, Small Blind e Big Blind giram automaticamente
           </small>
         </section>
@@ -2095,7 +2354,7 @@ function SessionEndedView({
   return (
     <section className="sessionEndedPage pageEnter">
       <div className="sessionEndedMark">
-        <Check size={30} />
+        <Check size={24} />
       </div>
       <span className="eyebrow gold">Mesa encerrada</span>
       <h1>Sessão salva. Boa decisão parar no momento certo.</h1>
@@ -2145,7 +2404,7 @@ function SessionEndedView({
             notify("Mesa reaberta.");
           }}
         >
-          <RotateCcw size={17} />
+          <RotateCcw size={16} />
           Reabrir esta mesa
         </button>
       </div>
@@ -2160,14 +2419,39 @@ function TrainingView({
   data: AppData;
   updateData: (updater: (current: AppData) => AppData) => void;
 }) {
+  const [practiceProgress, setPracticeProgress] = useState(
+    createEmptyTrainingProgress,
+  );
+  const questions = useMemo(
+    () => adaptiveTrainingQuestions(practiceProgress),
+    [practiceProgress],
+  );
+  const focus = useMemo(
+    () => recommendedTrainingFocus(practiceProgress),
+    [practiceProgress],
+  );
   const [questionIndex, setQuestionIndex] = useState(
-    data.trainingAnswered % TRAINING_QUESTIONS.length,
+    data.trainingAnswered % questions.length,
   );
   const [answer, setAnswer] = useState<number | null>(null);
-  const question = TRAINING_QUESTIONS[questionIndex];
+  const question = questions[questionIndex % questions.length];
   const accuracy = data.trainingAnswered
     ? Math.round((data.trainingCorrect / data.trainingAnswered) * 100)
     : 0;
+
+  useEffect(() => {
+    const refreshProgress = () => setPracticeProgress(loadTrainingProgress());
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshProgress();
+    };
+    refreshProgress();
+    window.addEventListener("storage", refreshProgress);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("storage", refreshProgress);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
 
   const chooseAnswer = (index: number) => {
     if (answer !== null) return;
@@ -2181,7 +2465,7 @@ function TrainingView({
   };
 
   const nextQuestion = () => {
-    setQuestionIndex((current) => (current + 1) % TRAINING_QUESTIONS.length);
+    setQuestionIndex((current) => (current + 1) % questions.length);
     setAnswer(null);
   };
 
@@ -2190,7 +2474,7 @@ function TrainingView({
       <div className="pageHeading">
         <div>
           <span className="eyebrow gold">
-            <Brain size={14} />
+            <Brain size={16} />
             Treinador pessoal
           </span>
           <h1>Pratique decisões, não decore respostas.</h1>
@@ -2210,10 +2494,10 @@ function TrainingView({
       <div className="trainingGrid">
         <article className="quizCard surfaceCard">
           <div className="quizTop">
-            <span className="eyebrow">{question.eyebrow}</span>
+            <span className="eyebrow">{question.eyebrow} · {focus.streetLabel}</span>
             <span>
-              Questão {(questionIndex % TRAINING_QUESTIONS.length) + 1}/
-              {TRAINING_QUESTIONS.length}
+              Questão {(questionIndex % questions.length) + 1}/
+              {questions.length}
             </span>
           </div>
           <h2>{question.question}</h2>
@@ -2241,7 +2525,7 @@ function TrainingView({
           </div>
           {answer !== null && (
             <div className="quizFeedback">
-              <Lightbulb size={20} />
+              <Lightbulb size={21} />
               <div>
                 <strong>
                   {answer === question.correct ? "Boa decisão." : "Quase lá."}
@@ -2261,38 +2545,49 @@ function TrainingView({
         </article>
 
         <aside className="lessonStack">
+          <a className="lessonCard trainingPlayCard" href="/treino">
+            <span className="lessonIcon">
+              <Users size={21} />
+            </span>
+            <div>
+              <small>Recomendado · {focus.streetLabel}</small>
+              <h3>{focus.title}</h3>
+              <p>{focus.description} O professor ajusta a mesa automaticamente.</p>
+            </div>
+            <ChevronRight size={21} />
+          </a>
           <article className="lessonCard preflop">
             <span className="lessonIcon">
-              <Spade size={20} />
+              <Spade size={21} />
             </span>
             <div>
               <small>Trilha 01 · 6 min</small>
               <h3>Seleção de mãos pré-flop</h3>
               <p>Saiba quando entrar, aumentar ou abandonar pela posição.</p>
             </div>
-            <ChevronRight size={20} />
+            <ChevronRight size={21} />
           </article>
           <article className="lessonCard math">
             <span className="lessonIcon">
-              <Gauge size={20} />
+              <Gauge size={21} />
             </span>
             <div>
               <small>Trilha 02 · 8 min</small>
               <h3>Outs, equidade e pot odds</h3>
               <p>Transforme probabilidades em decisões simples.</p>
             </div>
-            <ChevronRight size={20} />
+            <ChevronRight size={21} />
           </article>
           <article className="lessonCard mindset">
             <span className="lessonIcon">
-              <HeartPulse size={20} />
+              <HeartPulse size={21} />
             </span>
             <div>
               <small>Trilha 03 · 4 min</small>
               <h3>Disciplina contra o tilt</h3>
               <p>Reconheça quando a emoção começa a decidir por você.</p>
             </div>
-            <ChevronRight size={20} />
+            <ChevronRight size={21} />
           </article>
         </aside>
       </div>
@@ -2344,7 +2639,7 @@ function HistoryView({ data }: { data: AppData }) {
       <div className="pageHeading">
         <div>
           <span className="eyebrow gold">
-            <History size={14} />
+            <History size={16} />
             Sua evolução
           </span>
           <h1>Cada mão deixa uma lição.</h1>
@@ -2376,7 +2671,7 @@ function HistoryView({ data }: { data: AppData }) {
       {!hands.length ? (
         <div className="emptyState surfaceCard">
           <span>
-            <BookOpen size={25} />
+            <BookOpen size={24} />
           </span>
           <h2>Seu histórico começa na próxima mão.</h2>
           <p>
@@ -2417,7 +2712,7 @@ function HistoryView({ data }: { data: AppData }) {
                   {hand.result >= 0 ? "+" : ""}
                   {formatMoney(hand.result)}
                 </strong>
-                <ChevronRight size={19} />
+                <ChevronRight size={18} />
               </summary>
               <div className="handDetails">
                 <div>
@@ -2463,17 +2758,17 @@ function MoodSelector({
   }> = [
     {
       id: "focused",
-      icon: <Target size={20} />,
+      icon: <Target size={21} />,
       description: "Plano normal",
     },
     {
       id: "tired",
-      icon: <Moon size={20} />,
+      icon: <Moon size={21} />,
       description: "Mais seletivo",
     },
     {
       id: "tilted",
-      icon: <HeartPulse size={20} />,
+      icon: <HeartPulse size={21} />,
       description: "Proteção máxima",
     },
   ];
@@ -2491,7 +2786,7 @@ function MoodSelector({
             <strong>{MOOD_LABELS[option.id]}</strong>
             <small>{option.description}</small>
           </span>
-          {value === option.id && <Check size={17} />}
+          {value === option.id && <Check size={16} />}
         </button>
       ))}
     </div>
@@ -2568,13 +2863,16 @@ function ProfileView({
       const code = await ensureSyncCode();
       const { saveToCloud } = await import("@/lib/cloud-sync");
       const { syncCode: _secret, ...withoutSecret } = data;
-      const result = await saveToCloud(code, withoutSecret);
+      const result = await saveToCloud(code, {
+        ...withoutSecret,
+        trainingProgress: trainingProgressForSync(loadTrainingProgress()),
+      });
       if (!result.ok) throw new Error(result.message);
       const now = new Date().toISOString();
       updateData((current) => ({ ...current, lastCloudSync: now }));
       setSyncFeedback({
         state: "success",
-        message: "Tudo salvo na nuvem.",
+        message: "Sessões e progresso do treino salvos na nuvem.",
       });
     } catch (error) {
       setSyncFeedback({
@@ -2599,11 +2897,25 @@ function ProfileView({
     setSyncFeedback({ state: "working", message: "Buscando sua cópia…" });
     try {
       const { loadFromCloud } = await import("@/lib/cloud-sync");
-      const result = await loadFromCloud<AppData>(code);
+      const result = await loadFromCloud<
+        AppData & { trainingProgress?: unknown }
+      >(code);
       if (!result.ok) throw new Error(result.message);
       const normalized = normalizeAppData(result.payload);
       if (!normalized) {
         throw new Error("O backup não contém dados válidos do Mesa Certa.");
+      }
+      if (result.payload.trainingProgress) {
+        const remoteProgress = normalizeTrainingProgress(
+          result.payload.trainingProgress,
+        );
+        const localProgress = loadTrainingProgress();
+        saveTrainingProgress({
+          ...remoteProgress,
+          history: localProgress.history.filter((hand) =>
+            remoteProgress.recordedHandIds.includes(hand.id),
+          ),
+        });
       }
       updateData(() => ({
         ...normalized,
@@ -2612,7 +2924,7 @@ function ProfileView({
       }));
       setSyncFeedback({
         state: "success",
-        message: "Dados recuperados da nuvem.",
+        message: "Sessões e progresso do treino recuperados da nuvem.",
       });
     } catch (error) {
       setSyncFeedback({
@@ -2694,7 +3006,7 @@ function ProfileView({
       <div className="pageHeading">
         <div>
           <span className="eyebrow gold">
-            <Settings size={14} />
+            <Settings size={16} />
             Seu jogo, suas regras
           </span>
           <h1>Disciplina também é uma vantagem.</h1>
@@ -2709,7 +3021,7 @@ function ProfileView({
           <article className="bankrollCard surfaceCard">
             <div className="cardHeading">
               <span className="sectionIcon">
-                <CircleDollarSign size={20} />
+                <CircleDollarSign size={21} />
               </span>
               <div>
                 <span className="eyebrow">Gestão de banca</span>
@@ -2752,7 +3064,7 @@ function ProfileView({
           <article className="mindsetCard surfaceCard">
             <div className="cardHeading">
               <span className="sectionIcon">
-                <HeartPulse size={20} />
+                <HeartPulse size={21} />
               </span>
               <div>
                 <span className="eyebrow">Controle emocional</span>
@@ -2775,7 +3087,7 @@ function ProfileView({
           <article className="opponentsCard surfaceCard">
             <div className="cardHeading">
               <span className="sectionIcon">
-                <Users size={20} />
+                <Users size={21} />
               </span>
               <div>
                 <span className="eyebrow">Diário dos adversários</span>
@@ -2863,14 +3175,14 @@ function ProfileView({
         <aside className="profileAside">
           <article className="cloudCard surfaceCard">
             <div className="cloudIllustration">
-              <Cloud size={25} />
-              <LockKeyhole size={15} />
+              <Cloud size={24} />
+              <LockKeyhole size={16} />
             </div>
             <span className="eyebrow">Cofre na nuvem</span>
             <h2>Seu jogo em qualquer aparelho.</h2>
             <p>
-              Um código privado protege suas sessões, notas e progresso. Não
-              usamos nomes reais como chave.
+              Um código privado protege suas sessões, notas, quiz, estatísticas
+              e perfil de aprendizagem. Não usamos nomes reais como chave.
             </p>
             <label className="syncCodeLabel">
               <span>Código privado</span>
@@ -2900,7 +3212,7 @@ function ProfileView({
                 className="secondaryButton fullButton"
                 onClick={copySyncCode}
               >
-                <LockKeyhole size={17} />
+                <LockKeyhole size={16} />
                 Gerar código privado
               </button>
             )}
@@ -2910,14 +3222,14 @@ function ProfileView({
                 onClick={saveCloud}
                 disabled={syncFeedback.state === "working"}
               >
-                <CloudUpload size={17} /> Salvar
+                <CloudUpload size={16} /> Salvar
               </button>
               <button
                 type="button"
                 onClick={loadCloud}
                 disabled={syncFeedback.state === "working"}
               >
-                <CloudDownload size={17} /> Recuperar
+                <CloudDownload size={16} /> Recuperar
               </button>
             </div>
             <button
@@ -2928,7 +3240,7 @@ function ProfileView({
               onClick={deleteCloud}
               disabled={syncFeedback.state === "working"}
             >
-              <Trash2 size={14} />
+              <Trash2 size={16} />
               {confirmCloudDelete
                 ? "Confirmar exclusão"
                 : "Apagar backup da nuvem"}
@@ -2947,7 +3259,7 @@ function ProfileView({
           </article>
 
           <article className="responsibleCard">
-            <ShieldCheck size={22} />
+            <ShieldCheck size={21} />
             <span className="eyebrow">Jogo responsável</span>
             <h3>O melhor fold também protege sua banca.</h3>
             <p>
@@ -2965,7 +3277,7 @@ function LoadingApp() {
   return (
     <main className="boot">
       <div className="bootMark">
-        <Spade size={25} />
+        <Spade size={24} />
       </div>
       <p>Mesa Certa</p>
       <span>Preparando sua mesa…</span>
@@ -2976,6 +3288,7 @@ function LoadingApp() {
 export default function PokerApp() {
   const { data, setData, hydrated } = usePersistentData();
   const [tab, setTab] = useState<AppTab>("table");
+  const [simpleMode, setSimpleMode] = useState(false);
   const [online, setOnline] = useState(true);
   const [toast, setToast] = useState("");
 
@@ -2995,33 +3308,6 @@ export default function PokerApp() {
     const goOffline = () => setOnline(false);
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
-    if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then(() => navigator.serviceWorker.ready)
-        .then((registration) => {
-          const urls = performance
-            .getEntriesByType("resource")
-            .map((entry) => entry.name)
-            .filter((candidate) => {
-              const url = new URL(candidate, window.location.origin);
-              return (
-                url.origin === window.location.origin &&
-                url.pathname.startsWith("/_next/static/")
-              );
-            });
-          registration.active?.postMessage({
-            type: "CACHE_URLS",
-            urls: [
-              ...urls,
-              "/icon-192.png",
-              "/icon-512.png",
-              "/manifest.webmanifest",
-            ],
-          });
-        })
-        .catch(() => undefined);
-    }
     return () => {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
@@ -3045,11 +3331,20 @@ export default function PokerApp() {
 
       <div className="appContent">
         {tab === "table" &&
-          (data.session?.active ? (
+          (simpleMode ? (
+            <SimpleMode
+              copilotEnabled={data.copilotEnabled}
+              onEnableCopilot={() =>
+                updateData((current) => ({ ...current, copilotEnabled: true }))
+              }
+              onBack={() => setSimpleMode(false)}
+            />
+          ) : data.session?.active ? (
             <LiveTable
               data={data}
               updateData={updateData}
               notify={notify}
+              onSimpleMode={() => setSimpleMode(true)}
             />
           ) : data.session ? (
             <SessionEndedView
@@ -3059,8 +3354,10 @@ export default function PokerApp() {
             />
           ) : (
             <SetupTable
+              onSimpleMode={() => setSimpleMode(true)}
               onStart={(session) => {
                 updateData((current) => ({ ...current, session }));
+                setSimpleMode(false);
                 notify("Mesa pronta. Você começa no Big Blind.");
               }}
             />
@@ -3082,7 +3379,7 @@ export default function PokerApp() {
 
       {toast && (
         <div className="toast" role="status">
-          <Check size={17} />
+          <Check size={16} />
           {toast}
         </div>
       )}

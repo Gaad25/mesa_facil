@@ -66,6 +66,20 @@ test("API sanitiza, expira e permite excluir o backup", async () => {
       archivedHands: [],
       trainingAnswered: 0,
       trainingCorrect: 0,
+      trainingProgress: {
+        version: 1,
+        handsPlayed: 2,
+        decisions: 3,
+        good: 2,
+        acceptable: 0,
+        risky: 1,
+        totalResult: 10,
+        byStreet: {},
+        recentHands: [],
+        history: [],
+        recordedHandIds: [],
+        campoInesperado: "remover",
+      },
       syncCode: "nao-deve-sair-do-aparelho",
     };
     const saveResponse = await POST(syncRequest("save", payload));
@@ -80,6 +94,9 @@ test("API sanitiza, expira e permite excluir o backup", async () => {
       payload: Record<string, unknown>;
     };
     assert.equal("syncCode" in storedRecord.payload, false);
+    const storedProgress = storedRecord.payload.trainingProgress as Record<string, unknown>;
+    assert.equal(storedProgress.handsPlayed, 2);
+    assert.equal("campoInesperado" in storedProgress, false);
 
     const deleteResponse = await POST(syncRequest("delete"));
     assert.equal(deleteResponse.status, 200);

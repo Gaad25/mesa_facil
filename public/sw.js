@@ -1,5 +1,5 @@
-const CACHE_NAME = "mesa-certa-shell-v2";
-const APP_SHELL = ["/", "/offline", "/manifest.webmanifest"];
+const CACHE_NAME = "mesa-certa-shell-v4";
+const APP_SHELL = ["/", "/treino", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -39,7 +39,10 @@ self.addEventListener("message", (event) => {
           url.pathname === "/icon-192.png" ||
           url.pathname === "/icon-512.png" ||
           url.pathname === "/og.png" ||
-          url.pathname === "/manifest.webmanifest")
+          url.pathname === "/manifest.webmanifest" ||
+          url.pathname === "/" ||
+          url.pathname === "/treino" ||
+          url.pathname === "/offline")
       );
     } catch {
       return false;
