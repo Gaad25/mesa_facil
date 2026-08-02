@@ -13,7 +13,7 @@ async function resetTraining(page: Page) {
 async function startHeadsUpTraining(page: Page) {
   await page.getByRole("button", { name: "1 adversário", exact: true }).click();
   await page.getByRole("button", { name: /Sentar à mesa/ }).click();
-  await expect(page.getByText("Sua decisão")).toBeVisible();
+  await expect(page.getByText("Sua decisão", { exact: true })).toBeVisible();
 }
 
 function formatViolations(
@@ -126,7 +126,7 @@ test("mantém a mesa disponível depois de recarregar sem conexão", async ({
   try {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByText(/Mesa de treino · (bots adaptativos|GTO aproximado)/)).toBeVisible();
-    await expect(page.getByText("Sua decisão")).toBeVisible();
+    await expect(page.getByText("Sua decisão", { exact: true })).toBeVisible();
   } finally {
     await context.setOffline(false);
   }
@@ -148,6 +148,50 @@ test("configura torneio com ante e exporta o progresso local", async ({ page }) 
 
   await expect(page.getByText("Nível 1", { exact: true })).toBeVisible();
   await expect(page.getByText("10/20 · 2", { exact: true })).toBeVisible();
+});
+
+test("mantém assentos legíveis e explica a decisão no celular", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resetTraining(page);
+  await page.getByRole("button", { name: "5 adversários", exact: true }).click();
+  await page.getByRole("button", { name: /Sentar à mesa/ }).click();
+
+  await expect(page.getByText("Sua decisão", { exact: true })).toBeVisible();
+  const lesson = page.getByRole("region", { name: "Professor da jogada" });
+  await expect(lesson).toBeVisible();
+  await expect(lesson.getByRole("heading", { name: "Entenda a jogada" })).toBeVisible();
+  await expect(lesson.getByText("O que aconteceu")).toBeVisible();
+  await expect(lesson.getByText("Sua decisão agora")).toBeVisible();
+  await expect(lesson.getByText("Professor recomenda")).toBeVisible();
+
+  const table = page.getByRole("group", { name: "Mesa de poker" });
+  const tableBox = await table.boundingBox();
+  expect(tableBox).not.toBeNull();
+
+  const seats = page.locator("[data-training-seat]");
+  await expect(seats).toHaveCount(6);
+  for (let index = 0; index < 6; index += 1) {
+    const seat = seats.nth(index);
+    const seatBox = await seat.boundingBox();
+    expect(seatBox).not.toBeNull();
+    expect(seatBox!.x).toBeGreaterThanOrEqual(tableBox!.x - 1);
+    expect(seatBox!.x + seatBox!.width).toBeLessThanOrEqual(
+      tableBox!.x + tableBox!.width + 1,
+    );
+    expect(seatBox!.y).toBeGreaterThanOrEqual(tableBox!.y - 1);
+    expect(seatBox!.y + seatBox!.height).toBeLessThanOrEqual(
+      tableBox!.y + tableBox!.height + 1,
+    );
+
+    const textFits = await seat.locator(":scope > div:nth-child(2) strong").evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    );
+    const stackFits = await seat.locator("small").evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    );
+    expect(textFits).toBe(true);
+    expect(stackFits).toBe(true);
+  }
 });
 
 test("@a11y não apresenta violações WCAG A/AA na configuração", async ({ page }) => {

@@ -805,6 +805,8 @@ function seatPosition(player: TrainingPlayer, total: number) {
   return {
     "--seat-x": `${50 + Math.cos(radians) * 38}%`,
     "--seat-y": `${50 + Math.sin(radians) * 38}%`,
+    "--mobile-seat-x": `${50 + Math.cos(radians) * 36}%`,
+    "--mobile-seat-y": `${50 + Math.sin(radians) * 34}%`,
   } as CSSProperties;
 }
 
@@ -832,6 +834,10 @@ function PlayerSeat({
         current ? styles.currentSeat : ""
       } ${player.folded ? styles.foldedSeat : ""}`}
       style={seatPosition(player, game.players.length)}
+      data-training-seat={player.seat}
+      aria-label={`${player.isHero ? "Você" : player.name}, ${formatChips(player.stack)} fichas${
+        role ? `, posição ${role}` : ""
+      }${player.folded ? ", desistiu" : player.allIn ? ", all-in" : ""}`}
     >
       <div className={styles.seatCards}>
         {player.holeCards.map((card, index) => (
@@ -848,7 +854,9 @@ function PlayerSeat({
         <span className={styles.avatar}>{player.isHero ? "EU" : player.name[0]}</span>
         <span className={styles.seatMeta}>
           <strong>{player.name}</strong>
-          <small>{formatChips(player.stack)} fichas</small>
+          <small>
+            {formatChips(player.stack)}<span className={styles.chipWord}> fichas</span>
+          </small>
         </span>
         {role && <em>{role}</em>}
       </div>
@@ -949,6 +957,140 @@ function RecentActions({ actions }: { actions: TrainingActionRecord[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function explainLatestAction(action: TrainingActionRecord | undefined) {
+  if (!action) {
+    return "Os blinds já colocaram as primeiras fichas no pote. A ação começa pelo primeiro jogador ainda ativo.";
+  }
+
+  const amount = formatChips(action.amount);
+  switch (action.action) {
+    case "fold":
+      return `${action.playerName} desistiu da mão. As fichas que já estavam no pote continuam lá, mas esse jogador não pode mais ganhá-las.`;
+    case "check":
+      return `${action.playerName} deu check: continuou na mão sem colocar fichas porque não havia uma aposta para pagar.`;
+    case "call":
+      return `${action.playerName} pagou ${amount} fichas para igualar a aposta e continuar na mão.`;
+    case "raise":
+      return `${action.playerName} colocou ${amount} fichas em um raise. A aposta ficou maior para os jogadores que agem depois.`;
+    case "allIn":
+      return `${action.playerName} foi all-in e colocou suas ${amount} fichas restantes em jogo.`;
+  }
+}
+
+function explainStreet(street: TrainingStreet) {
+  switch (street) {
+    case "preflop":
+      return "No pré-flop, avalie suas duas cartas, sua posição e a pressão das apostas; ainda não há cartas comunitárias.";
+    case "flop":
+      return "No flop, compare suas cartas com as três cartas da mesa e observe pares e projetos de sequência ou flush.";
+    case "turn":
+      return "No turn, a quarta carta pode melhorar mãos e projetos. Reavalie antes de repetir o plano do flop.";
+    case "river":
+      return "No river, nenhuma carta nova virá. Decida usando a força final da mão e a história das apostas.";
+    case "showdown":
+      return "No showdown, as mãos restantes são comparadas para decidir quem recebe o pote.";
+  }
+}
+
+function explainDecision(game: TrainingGameState, legal: TrainingLegalActions) {
+  if (legal.toCall <= 0) {
+    return `Não há aposta para pagar. Check mantém você na mão sem custo; Raise coloca pressão e aumenta o pote de ${formatChips(trainingPotTotal(game))} fichas.`;
+  }
+
+  const pot = trainingPotTotal(game);
+  const finalPot = pot + legal.callAmount;
+  const breakEven = finalPot > 0
+    ? Math.round((legal.callAmount / finalPot) * 100)
+    : 0;
+  return `O Call custa ${formatChips(legal.callAmount)} fichas e faria o pote chegar a ${formatChips(finalPot)}. Em termos simples, ele precisa ganhar cerca de ${breakEven}% das vezes para se pagar no longo prazo.`;
+}
+
+function actionMeaning(action: TrainingActionType, legal: TrainingLegalActions) {
+  switch (action) {
+    case "fold":
+      return "sair da mão e não investir mais";
+    case "check":
+      return "passar a vez sem pagar";
+    case "call":
+      return `pagar ${formatChips(legal.callAmount)} e continuar`;
+    case "raise":
+      return `aumentar para pelo menos ${formatChips(legal.minRaiseTo)}`;
+    case "allIn":
+      return "colocar todas as fichas disponíveis";
+  }
+}
+
+function DecisionLesson({
+  game,
+  legal,
+  latestAction,
+  feedback,
+  mode,
+  onAsk,
+}: {
+  game: TrainingGameState;
+  legal: TrainingLegalActions;
+  latestAction: TrainingActionRecord | undefined;
+  feedback: TeacherFeedback | null;
+  mode: TeacherMode;
+  onAsk: () => void;
+}) {
+  const availableActions: TrainingActionType[] = [
+    ...(legal.canFold ? ["fold" as const] : []),
+    ...(legal.canCheck ? ["check" as const] : []),
+    ...(legal.canCall ? ["call" as const] : []),
+    ...(legal.canRaise ? ["raise" as const] : []),
+    ...(legal.canAllIn ? ["allIn" as const] : []),
+  ];
+
+  return (
+    <section className={styles.decisionLesson} aria-label="Professor da jogada" aria-live="polite">
+      <div className={styles.lessonHeader}>
+        <h2><Brain size={17} aria-hidden="true" /> Entenda a jogada</h2>
+        <span>{STREET_LABELS[game.street]}</span>
+      </div>
+
+      <div className={styles.lessonSteps}>
+        <article>
+          <strong><span>1</span> O que aconteceu</strong>
+          <p>{explainLatestAction(latestAction)}</p>
+        </article>
+        <article>
+          <strong><span>2</span> Sua decisão agora</strong>
+          <p>{explainDecision(game, legal)}</p>
+          <small>{explainStreet(game.street)}</small>
+        </article>
+      </div>
+
+      {feedback ? (
+        <div className={styles.lessonRecommendation}>
+          <span><Lightbulb size={15} aria-hidden="true" /> Professor recomenda</span>
+          <strong>{ACTION_LABELS[feedback.recommendedAction]}</strong>
+          <p>{feedback.explanation}</p>
+          <small>{feedback.teachingPoint}</small>
+        </div>
+      ) : mode === "hints" ? (
+        <button type="button" className={styles.lessonHintButton} onClick={onAsk}>
+          <CircleHelp size={16} aria-hidden="true" /> Explicar qual ação faz mais sentido
+        </button>
+      ) : (
+        <p className={styles.lessonReviewNote}>
+          No modo avaliação, escolha primeiro. O professor compara sua jogada logo depois.
+        </p>
+      )}
+
+      <div className={styles.actionMeanings} aria-label="Significado das ações disponíveis">
+        {availableActions.map((action) => (
+          <span key={action}>
+            <strong>{ACTION_LABELS[action]}</strong>
+            <small>{actionMeaning(action, legal)}</small>
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1524,11 +1666,17 @@ function GameTable({
   game,
   thinking,
   legal,
+  teacherFeedback,
+  teacherMode,
+  onAskHint,
   onAction,
 }: {
   game: TrainingGameState;
   thinking: boolean;
   legal: TrainingLegalActions | null;
+  teacherFeedback: TeacherFeedback | null;
+  teacherMode: TeacherMode;
+  onAskHint: () => void;
   onAction: (decision: TrainingDecision) => void;
 }) {
   const hero = game.players.find((player) => player.isHero)!;
@@ -1548,7 +1696,7 @@ function GameTable({
           {thinking ? <><LoaderCircle className={styles.spinner} size={16} /> Adversário pensando</> : heroTurn ? "Sua vez" : "Mão em andamento"}
         </strong>
       </div>
-      <div className={styles.pokerTable}>
+      <div className={styles.pokerTable} role="group" aria-label="Mesa de poker">
         <div className={styles.feltMark}><Spade size={18} /> MESA CERTA</div>
         {game.players.map((player) => (
           <PlayerSeat key={player.id} player={player} game={game} />
@@ -1588,7 +1736,17 @@ function GameTable({
 
       <div className={styles.decisionDock}>
         {heroTurn && legal ? (
-          <ActionControls legal={legal} onAction={onAction} />
+          <>
+            <DecisionLesson
+              game={game}
+              legal={legal}
+              latestAction={latestAction}
+              feedback={teacherFeedback}
+              mode={teacherMode}
+              onAsk={onAskHint}
+            />
+            <ActionControls legal={legal} onAction={onAction} />
+          </>
         ) : (
           <section className={styles.waitingPanel}>
             {thinking ? <LoaderCircle className={styles.spinner} size={18} /> : <Bot size={18} />}
@@ -1738,7 +1896,15 @@ function ActiveTraining({
       </header>
 
       <div className={styles.gameLayout}>
-        <GameTable game={game} thinking={thinking} legal={legal} onAction={performAction} />
+        <GameTable
+          game={game}
+          thinking={thinking}
+          legal={legal}
+          teacherFeedback={visibleTeacher}
+          teacherMode={game.config.teacherMode}
+          onAskHint={() => setShowHint(true)}
+          onAction={performAction}
+        />
         <TeacherPanel
           feedback={visibleTeacher}
           mode={game.config.teacherMode}
