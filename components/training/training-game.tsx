@@ -70,6 +70,7 @@ import {
   trainingProgressFilename,
 } from "@/lib/training/progress-transfer";
 import { heroModelFromProgress } from "@/lib/training/player-model";
+import { createSessionSeed } from "@/lib/training/random";
 import {
   clearTrainingSession,
   loadTrainingProgress,
@@ -86,6 +87,7 @@ import type {
   TeacherFeedback,
   TeacherGrade,
   TeacherMode,
+  TrainingActionRecord,
   TrainingActionType,
   TrainingActionSpeed,
   TrainingConfig,
@@ -882,7 +884,10 @@ function ActionControls({
       </div>
       {legal.canRaise && (
         <div className={styles.raiseControl}>
-          <label htmlFor="training-raise">Aumentar para</label>
+          <div className={styles.raiseControlHeader}>
+            <label htmlFor="training-raise">Tamanho do aumento</label>
+            <output htmlFor="training-raise">{formatChips(raiseTo)} fichas</output>
+          </div>
           <input
             id="training-raise"
             type="range"
@@ -892,7 +897,10 @@ function ActionControls({
             value={raiseTo}
             onChange={(event) => setRaiseTo(Number(event.target.value))}
           />
-          <strong>{formatChips(raiseTo)}</strong>
+          <div className={styles.raiseBounds} aria-hidden="true">
+            <small>Mín. {formatChips(legal.minRaiseTo)}</small>
+            <small>Máx. {formatChips(legal.maxRaiseTo)}</small>
+          </div>
         </div>
       )}
       <div className={styles.actionButtons}>
@@ -923,6 +931,24 @@ function ActionControls({
         )}
       </div>
     </section>
+  );
+}
+
+function RecentActions({ actions }: { actions: TrainingActionRecord[] }) {
+  return (
+    <div className={styles.actionLog} aria-label="Ações recentes">
+      <span className={styles.actionLogTitle}>
+        <History size={14} aria-hidden="true" /> Últimas ações
+      </span>
+      <div className={styles.actionLogItems}>
+        {actions.map((action) => (
+          <span key={action.id} className={styles.actionLogItem}>
+            <strong>{action.playerName}</strong> {ACTION_LABELS[action.action]}
+            {action.amount > 0 ? ` ${formatChips(action.amount)}` : ""}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1560,25 +1586,17 @@ function GameTable({
         </div>
       </div>
 
-      {heroTurn && legal ? (
-        <ActionControls legal={legal} onAction={onAction} />
-      ) : (
-        <section className={styles.waitingPanel}>
-          {thinking ? <LoaderCircle className={styles.spinner} size={18} /> : <Bot size={18} />}
-          <span>{thinking ? "Os bots estão avaliando a mesa…" : "Aguardando a próxima ação…"}</span>
-        </section>
-      )}
-
-      {recentActions.length > 0 && (
-        <div className={styles.actionLog} aria-label="Ações recentes">
-          {recentActions.map((action) => (
-            <span key={action.id}>
-              <strong>{action.playerName}</strong> {ACTION_LABELS[action.action]}
-              {action.amount > 0 ? ` ${formatChips(action.amount)}` : ""}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className={styles.decisionDock}>
+        {heroTurn && legal ? (
+          <ActionControls legal={legal} onAction={onAction} />
+        ) : (
+          <section className={styles.waitingPanel}>
+            {thinking ? <LoaderCircle className={styles.spinner} size={18} /> : <Bot size={18} />}
+            <span>{thinking ? "Os bots estão avaliando a mesa…" : "Aguardando a próxima ação…"}</span>
+          </section>
+        )}
+        {recentActions.length > 0 && <RecentActions actions={recentActions} />}
+      </div>
     </section>
   );
 }
@@ -1834,7 +1852,7 @@ export default function TrainingGame() {
               createTrainingGame({
                 ...config,
                 heroModel: heroModelFromProgress(progressWithCurrentHand),
-                seed: Date.now(),
+                seed: createSessionSeed(),
               }),
             );
           }}
@@ -1857,7 +1875,7 @@ export default function TrainingGame() {
                 createTrainingGame({
                   ...recommendedTrainingConfig(progressWithCurrentHand),
                   heroModel: heroModelFromProgress(progressWithCurrentHand),
-                  seed: Date.now(),
+                  seed: createSessionSeed(),
                 }),
               );
             }}

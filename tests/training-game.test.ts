@@ -11,6 +11,7 @@ import {
   trainingBlindStructure,
 } from "../lib/training/game-engine";
 import type { TrainingGameState, TrainingPlayer } from "../lib/training/types";
+import { createSessionSeed } from "../lib/training/random";
 
 function passiveShowdown() {
   let game = createTrainingGame({
@@ -40,6 +41,52 @@ test("cria uma mesa determinística sem cartas duplicadas", () => {
   assert.equal(new Set(first.deck.map((card) => `${card.rank}-${card.suit}`)).size, 52);
   assert.equal(first.players.length, 6);
   assert.ok(first.players.every((player) => player.holeCards.length === 2));
+});
+
+test("sessões novas recebem embaralhamentos diferentes", () => {
+  const signatures = new Set<string>();
+  const seeds = new Set<number>();
+
+  for (let session = 0; session < 32; session += 1) {
+    const seed = createSessionSeed();
+    const game = createTrainingGame({ opponentCount: 2, seed });
+    seeds.add(seed);
+    signatures.add(
+      game.deck
+        .slice(0, 12)
+        .map((card) => `${card.rank}-${card.suit}`)
+        .join("|"),
+    );
+  }
+
+  assert.equal(seeds.size, 32);
+  assert.equal(signatures.size, 32);
+});
+
+test("seeds baseadas em horário não colapsam no mesmo limite", () => {
+  const first = normalizeTrainingConfig({ seed: 1_775_000_000_000 }).seed;
+  const second = normalizeTrainingConfig({ seed: 1_775_000_000_001 }).seed;
+
+  assert.notEqual(first, second);
+  assert.ok(first > 0 && first <= 0xffff_ffff);
+  assert.ok(second > 0 && second <= 0xffff_ffff);
+});
+
+test("migra a seed repetida de sessões antigas sem trocar a mão atual", () => {
+  const legacy = createTrainingGame({
+    opponentCount: 2,
+    seed: 2_147_483_647,
+  });
+  const restored = restoreTrainingGameState(
+    JSON.parse(JSON.stringify(legacy)) as TrainingGameState,
+  );
+
+  assert.notEqual(restored.config.seed, 2_147_483_647);
+  assert.deepEqual(restored.deck, legacy.deck);
+  assert.deepEqual(
+    restored.players.map((player) => player.holeCards),
+    legacy.players.map((player) => player.holeCards),
+  );
 });
 
 test("posta antes separados das apostas e escala blinds por nível", () => {

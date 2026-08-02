@@ -1053,16 +1053,20 @@
   background: var(--color-accent-2-700);
 }
 
-.actionPanel,
-.waitingPanel {
+.decisionDock {
   display: grid;
-  gap: 11px;
-  padding: 14px;
-  border: 0;
-  border-radius: 999px;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
   background: var(--color-neutral-100);
   box-shadow: var(--shadow-lg);
   animation: panelArrive 240ms ease-out both;
+}
+
+.actionPanel {
+  display: grid;
+  gap: 14px;
 }
 
 .actionPrompt {
@@ -1084,54 +1088,84 @@
 }
 
 .actionPrompt strong {
-  color: var(--color-neutral-700);
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
   font-size: 12px;
+  font-weight: 700;
 }
 
 .raiseControl {
   display: grid;
-  grid-template-columns: auto 1fr 54px;
-  align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
-.raiseControl label {
+.raiseControlHeader,
+.raiseBounds {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.raiseControlHeader label {
   color: var(--color-neutral-700);
   font-size: 12px;
+  font-weight: 600;
+}
+
+.raiseControlHeader output {
+  color: var(--color-accent-700);
+  font-family: var(--font-heading);
+  font-size: 15px;
 }
 
 .raiseControl input {
+  height: 22px;
   width: 100%;
   accent-color: var(--color-accent);
 }
 
-.raiseControl strong {
-  color: var(--color-accent-700);
-  font-size: 12px;
-  text-align: right;
+.raiseBounds small {
+  color: var(--color-neutral-800);
+  font-size: 10px;
 }
 
 .actionButtons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
 }
 
 .actionButtons button,
 .askButton,
 .primaryAction,
 .secondaryAction {
-  min-height: 42px;
+  min-height: 48px;
   display: inline-flex;
-  flex: 1;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 0 13px;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.actionButtons button:hover {
+  filter: brightness(0.97);
+  transform: translateY(-1px);
+}
+
+.actionButtons button:active {
+  transform: translateY(0) scale(0.985);
 }
 
 .foldButton {
@@ -1161,7 +1195,7 @@
 }
 
 .waitingPanel {
-  min-height: 70px;
+  min-height: 54px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1171,11 +1205,39 @@
 
 .actionLog {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
 }
 
-.actionLog span {
+.actionLogTitle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-neutral-600);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.actionLogItems {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.actionLogItems::-webkit-scrollbar {
+  display: none;
+}
+
+.actionLogItem {
+  flex: 0 0 auto;
   padding: 5px 8px;
   border: 1px solid var(--color-divider);
   border-radius: 999px;
@@ -1185,7 +1247,7 @@
   animation: actionArrive 260ms ease-out both;
 }
 
-.actionLog strong {
+.actionLogItem strong {
   color: var(--color-neutral-700);
 }
 
@@ -2530,8 +2592,12 @@
     font-size: 19px;
   }
 
+  .actionButtons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .actionButtons button {
-    min-width: calc(33% - 7px);
+    min-width: 0;
   }
 
   .teacherPanel {
@@ -2599,12 +2665,28 @@
     height: 44px;
   }
 
-  .raiseControl {
-    grid-template-columns: 1fr 52px;
+  .decisionDock {
+    padding: 14px;
+    border-radius: 22px;
   }
 
-  .raiseControl label {
-    display: none;
+  .actionPrompt {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actionPrompt strong {
+    padding-left: 0;
+    background: transparent;
+  }
+
+  .actionLog {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actionLogItems {
+    width: 100%;
   }
 }
 
@@ -2616,9 +2698,10 @@
   .potChanged,
   .streetChanged,
   .statusChanged,
+  .decisionDock,
   .actionPanel,
   .waitingPanel,
-  .actionLog span,
+  .actionLogItem,
   .lastAction {
     animation: none;
   }

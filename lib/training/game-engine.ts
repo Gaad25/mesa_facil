@@ -1,6 +1,6 @@
 import { evaluateBestHand, type OpponentStyle } from "../poker";
 import { createShuffledDeck } from "./deck";
-import { hashSeed } from "./random";
+import { createSessionSeed, hashSeed } from "./random";
 import type {
   TrainingActionRecord,
   TrainingConfig,
@@ -24,10 +24,19 @@ const BOT_STYLES: OpponentStyle[] = [
   "passive",
 ];
 const VALID_BOT_STYLES = new Set<OpponentStyle>(BOT_STYLES);
+const LEGACY_COLLAPSED_SEED = 2_147_483_647;
 
 function clampInteger(value: number, minimum: number, maximum: number) {
   if (!Number.isFinite(value)) return minimum;
   return Math.min(maximum, Math.max(minimum, Math.round(value)));
+}
+
+function normalizeSeed(value: number | undefined) {
+  const candidate =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.trunc(value)
+      : Date.now();
+  return (candidate >>> 0) || 1;
 }
 
 function normalizeHeroModel(input: TrainingConfig["heroModel"] | undefined) {
@@ -107,7 +116,7 @@ export function normalizeTrainingConfig(
       100,
     ),
     heroModel: normalizeHeroModel(input.heroModel),
-    seed: clampInteger(input.seed ?? Date.now(), 1, 2_147_483_647),
+    seed: normalizeSeed(input.seed),
   };
 }
 
@@ -750,6 +759,17 @@ export function applyTrainingAction(
 export function restoreTrainingGameState(
   state: TrainingGameState,
 ): TrainingGameState {
+  const freshSeed = createSessionSeed();
+  const config =
+    state.config.seed === LEGACY_COLLAPSED_SEED
+      ? {
+          ...state.config,
+          seed:
+            freshSeed === LEGACY_COLLAPSED_SEED
+              ? LEGACY_COLLAPSED_SEED - 1
+              : freshSeed,
+        }
+      : state.config;
   const blindStructure = trainingBlindStructure(state.config, state.handNumber);
   const players = state.players.map((player) => ({
     ...player,
@@ -776,6 +796,7 @@ export function restoreTrainingGameState(
     : [];
   const normalized = {
     ...state,
+    config,
     players,
     replay,
     blindLevel:
