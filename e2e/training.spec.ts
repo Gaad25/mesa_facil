@@ -88,6 +88,25 @@ test("inicia, conclui, revisa e restaura uma sessão de treino", async ({ page }
 
   const opponentCards = page.getByLabel(/^Lia,/).getByRole("img", { name: / de / });
   await expect(opponentCards).toHaveCount(2);
+  for (let index = 0; index < 2; index += 1) {
+    const card = opponentCards.nth(index);
+    const cardBox = await card.boundingBox();
+    const rankBox = await card.locator(":scope > strong").boundingBox();
+    const suitBox = await card.locator(":scope > span").boundingBox();
+    expect(cardBox).not.toBeNull();
+    expect(rankBox).not.toBeNull();
+    expect(suitBox).not.toBeNull();
+    for (const contentBox of [rankBox!, suitBox!]) {
+      expect(contentBox.x).toBeGreaterThanOrEqual(cardBox!.x - 1);
+      expect(contentBox.y).toBeGreaterThanOrEqual(cardBox!.y - 1);
+      expect(contentBox.x + contentBox.width).toBeLessThanOrEqual(
+        cardBox!.x + cardBox!.width + 1,
+      );
+      expect(contentBox.y + contentBox.height).toBeLessThanOrEqual(
+        cardBox!.y + cardBox!.height + 1,
+      );
+    }
+  }
   const revealAnimation = await opponentCards.first().evaluate(
     (element) => getComputedStyle(element).animationName,
   );
