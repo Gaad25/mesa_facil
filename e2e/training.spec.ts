@@ -197,6 +197,12 @@ test("mantém assentos legíveis e explica a decisão no celular", async ({ page
   await page.getByRole("button", { name: /Sentar à mesa/ }).click();
 
   await expect(page.getByText("Sua decisão", { exact: true })).toBeVisible();
+  const actionPanel = page.getByRole("region", { name: "Suas ações" });
+  const actionBox = await actionPanel.boundingBox();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox!.y).toBeGreaterThanOrEqual(-1);
+  expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(845);
+
   const lesson = page.getByRole("region", { name: "Professor da jogada" });
   await expect(lesson).toBeVisible();
   await expect(lesson.getByRole("heading", { name: "Entenda a jogada" })).toBeVisible();

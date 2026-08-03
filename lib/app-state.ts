@@ -47,6 +47,15 @@ export interface HandRecord {
   actualAction?: TableAction;
   equity?: number;
   lesson?: string;
+  actions: RecordedAction[];
+}
+
+export interface OpponentStats {
+  actions: number;
+  observedHands: number;
+  participation: number;
+  aggression: number;
+  style: PlayerStyle;
 }
 
 export interface Session {
@@ -167,6 +176,14 @@ function safeNumber(
     : fallback;
 }
 
+function safeIsoDate(value: unknown) {
+  if (typeof value === "string") {
+    const timestamp = Date.parse(value);
+    if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
+  }
+  return new Date().toISOString();
+}
+
 function safeCard(value: unknown): Card | null {
   if (
     !isRecord(value) ||
@@ -184,19 +201,46 @@ function safeCards(value: unknown, maximum: number): Card[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const cards: Card[] = [];
-  for (const item of value.slice(0, maximum)) {
+  for (const item of value.slice(0, 52)) {
     const card = safeCard(item);
     if (!card) continue;
     const key = `${card.rank}-${card.suit}`;
     if (seen.has(key)) continue;
     seen.add(key);
     cards.push(card);
+    if (cards.length === maximum) break;
   }
   return cards;
 }
 
+function safeRecordedAction(value: unknown): RecordedAction | null {
+  if (
+    !isRecord(value) ||
+    typeof value.playerId !== "string" ||
+    typeof value.action !== "string" ||
+    !VALID_ACTIONS.has(value.action as TableAction)
+  ) {
+    return null;
+  }
+  const amount =
+    typeof value.amount === "number"
+      ? safeNumber(value.amount, 0, 0)
+      : undefined;
+  return {
+    id: safeString(value.id, `action-${Date.now()}`, 100),
+    playerId: value.playerId.slice(0, 100),
+    action: value.action as TableAction,
+    amount,
+  };
+}
+
 function safeHand(value: unknown): HandRecord | null {
   if (!isRecord(value)) return null;
+  const heroCards = safeCards(value.heroCards, 2);
+  const heroCardKeys = new Set(heroCards.map((card) => `${card.rank}-${card.suit}`));
+  const board = safeCards(value.board, 5).filter(
+    (card) => !heroCardKeys.has(`${card.rank}-${card.suit}`),
+  );
   const actualAction =
     typeof value.actualAction === "string" &&
     VALID_ACTIONS.has(value.actualAction as TableAction)
@@ -205,10 +249,10 @@ function safeHand(value: unknown): HandRecord | null {
   return {
     id: safeString(value.id, `hand-${Date.now()}`, 100),
     handNumber: Math.round(safeNumber(value.handNumber, 1, 1, 1_000_000)),
-    playedAt: safeString(value.playedAt, new Date().toISOString(), 40),
+    playedAt: safeIsoDate(value.playedAt),
     position: safeString(value.position, "—", 20),
-    heroCards: safeCards(value.heroCards, 2),
-    board: safeCards(value.board, 5),
+    heroCards,
+    board,
     pot: safeNumber(value.pot, 0, 0),
     result: safeNumber(value.result, 0),
     recommendedAction:
@@ -224,6 +268,12 @@ function safeHand(value: unknown): HandRecord | null {
       typeof value.lesson === "string"
         ? value.lesson.slice(0, 800)
         : undefined,
+    actions: Array.isArray(value.actions)
+      ? value.actions
+          .slice(0, 500)
+          .map(safeRecordedAction)
+          .filter((action): action is RecordedAction => Boolean(action))
+      : [],
   };
 }
 
@@ -247,10 +297,18 @@ function safePlayer(value: unknown, fallbackSeat: number): Player | null {
 
 function safeSession(value: unknown): Session | null {
   if (!isRecord(value) || !Array.isArray(value.players)) return null;
-  const players = value.players
+  const candidatePlayers = value.players
     .slice(0, 9)
     .map((player, index) => safePlayer(player, index))
     .filter((player): player is Player => Boolean(player));
+  const playerIds = new Set<string>();
+  const playerSeats = new Set<number>();
+  const players = candidatePlayers.filter((player) => {
+    if (playerIds.has(player.id) || playerSeats.has(player.seat)) return false;
+    playerIds.add(player.id);
+    playerSeats.add(player.seat);
+    return true;
+  });
   if (players.length < 2) return null;
 
   const uniqueIds = new Set(players.map((player) => player.id));
@@ -269,7 +327,7 @@ function safeSession(value: unknown): Session | null {
     id: safeString(value.id, `session-${Date.now()}`, 100),
     name: safeString(value.name, "Mesa dos amigos", 80),
     active: typeof value.active === "boolean" ? value.active : true,
-    startedAt: safeString(value.startedAt, new Date().toISOString(), 40),
+    startedAt: safeIsoDate(value.startedAt),
     handNumber: Math.round(
       safeNumber(value.handNumber, hands.length + 1, 1, 1_000_000),
     ),
@@ -303,6 +361,14 @@ export function normalizeAppData(value: unknown): AppData | null {
     : [];
   const session = value.session === null ? null : safeSession(value.session);
 
+  const trainingAnswered = Math.round(
+    safeNumber(value.trainingAnswered, 0, 0, 1_000_000),
+  );
+  const trainingCorrect = Math.min(
+    trainingAnswered,
+    Math.round(safeNumber(value.trainingCorrect, 0, 0, 1_000_000)),
+  );
+
   return {
     version: 1,
     copilotEnabled:
@@ -312,12 +378,8 @@ export function normalizeAppData(value: unknown): AppData | null {
     mood,
     session,
     archivedHands,
-    trainingAnswered: Math.round(
-      safeNumber(value.trainingAnswered, 0, 0, 1_000_000),
-    ),
-    trainingCorrect: Math.round(
-      safeNumber(value.trainingCorrect, 0, 0, 1_000_000),
-    ),
+    trainingAnswered,
+    trainingCorrect,
     syncCode:
       typeof value.syncCode === "string"
         ? value.syncCode.slice(0, 160)
@@ -458,6 +520,57 @@ export function rotateButton(session: Session): Session {
 
 export function totalSessionResult(session: Session): number {
   return session.hands.reduce((total, hand) => total + hand.result, 0);
+}
+
+/**
+ * Resume somente ações observadas. Enquanto a amostra é pequena, mantém o
+ * jogador como "Observando" em vez de fabricar precisão estatística.
+ */
+export function deriveOpponentStats(
+  hands: HandRecord[],
+  playerId: string,
+): OpponentStats {
+  const observedHands = hands.filter((hand) =>
+    hand.actions.some((action) => action.playerId === playerId),
+  );
+  const actions = observedHands.flatMap((hand) =>
+    hand.actions.filter((action) => action.playerId === playerId),
+  );
+  const voluntary = new Set<TableAction>(["call", "bet", "raise", "allIn"]);
+  const aggressive = new Set<TableAction>(["bet", "raise", "allIn"]);
+  const enteredHands = observedHands.filter((hand) =>
+    hand.actions.some(
+      (action) => action.playerId === playerId && voluntary.has(action.action),
+    ),
+  ).length;
+  const aggressionOpportunities = actions.filter((action) =>
+    voluntary.has(action.action),
+  ).length;
+  const aggressiveActions = actions.filter((action) =>
+    aggressive.has(action.action),
+  ).length;
+  const participation = observedHands.length
+    ? Math.round((enteredHands / observedHands.length) * 100)
+    : 0;
+  const aggression = aggressionOpportunities
+    ? Math.round((aggressiveActions / aggressionOpportunities) * 100)
+    : 0;
+
+  let style: PlayerStyle = "unknown";
+  if (actions.length >= 3) {
+    if (aggression >= 60) style = "aggressive";
+    else if (participation >= 70) style = "loose";
+    else if (participation <= 30) style = "tight";
+    else if (aggression <= 25) style = "passive";
+  }
+
+  return {
+    actions: actions.length,
+    observedHands: observedHands.length,
+    participation,
+    aggression,
+    style,
+  };
 }
 
 export function formatMoney(value: number): string {

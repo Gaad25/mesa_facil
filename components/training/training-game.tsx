@@ -888,13 +888,27 @@ function ActionControls({
   onAction: (decision: TrainingDecision) => void;
 }) {
   const [raiseTo, setRaiseTo] = useState(legal.minRaiseTo);
+  const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setRaiseTo(legal.minRaiseTo);
   }, [legal.playerId, legal.minRaiseTo, legal.maxRaiseTo]);
 
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 720px)").matches) return;
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.scrollIntoView({
+        block: "start",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [legal.playerId, legal.toCall, legal.minRaiseTo]);
+
   return (
-    <section className={styles.actionPanel} aria-label="Suas ações">
+    <section ref={panelRef} className={styles.actionPanel} aria-label="Suas ações">
       <div className={styles.actionPrompt}>
         <span><Target size={16} /> Sua decisão</span>
         <strong>

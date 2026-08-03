@@ -2,39 +2,23 @@
 
 import {
   Activity,
-  BarChart3,
-  BookOpen,
   Brain,
   Check,
   ChevronRight,
-  CircleDollarSign,
   Cloud,
-  CloudDownload,
-  CloudUpload,
-  Copy,
-  Eye,
-  EyeOff,
   Gauge,
   HeartPulse,
   History,
   Info,
-  Lightbulb,
-  LockKeyhole,
   LogOut,
   Minus,
-  Moon,
   Play,
   Plus,
   RotateCcw,
   Save,
-  Scale,
-  Settings,
   ShieldCheck,
   Sparkles,
   Spade,
-  Target,
-  Trophy,
-  Trash2,
   UserRound,
   Users,
   X,
@@ -48,13 +32,28 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { EditableNumberInput } from "@/components/editable-number-input";
+import {
+  actionRecommendationLabel,
+  AdviceCard,
+  MobileDecisionBar,
+} from "@/components/poker/advice";
+import { HistoryView } from "@/components/poker/history-view";
+import { ProfileView } from "@/components/poker/profile-view";
+import { TrainingView } from "@/components/poker/training-view";
+import {
+  CardFace,
+  NumberField,
+  RANKS,
+  SUITS,
+  cardKey,
+  isRedSuit,
+} from "@/components/poker/table-controls";
 import {
   ACTION_LABELS,
   APP_STORAGE_KEY,
   MOOD_LABELS,
-  STYLE_LABELS,
   createPlayers,
+  deriveOpponentStats,
   emptyAppData,
   formatMoney,
   getSeatRoles,
@@ -75,63 +74,21 @@ import {
   type Card,
   type EmotionalState,
   type OpponentStyle,
-  type PokerAnalysis,
   type PreflopPressure,
   type Rank,
-  type Suit,
   type TablePosition,
 } from "@/lib/poker";
 import { useSpotAnalysis } from "@/lib/use-spot-analysis";
-import {
-  adaptiveTrainingQuestions,
-  recommendedTrainingFocus,
-} from "@/lib/training/curriculum";
-import {
-  createEmptyTrainingProgress,
-  normalizeTrainingProgress,
-} from "@/lib/training/progress";
-import { trainingProgressForSync } from "@/lib/training/progress-transfer";
-import {
-  loadTrainingProgress,
-  saveTrainingProgress,
-} from "@/lib/training/storage";
 
 type AppTab = "table" | "training" | "history" | "profile";
 type Pressure = "unopened" | "limp" | "raise" | "threeBet" | "allIn";
 type CardTarget = { zone: "hero" | "board"; index: number } | null;
-type SyncFeedback = {
-  state: "idle" | "working" | "success" | "error";
-  message: string;
-};
 type HeroDecisionSnapshot = {
   actualAction: TableAction;
   recommendedAction?: string;
   equity?: number;
   lesson?: string;
 };
-
-const RANKS: Rank[] = [
-  "A",
-  "K",
-  "Q",
-  "J",
-  "10",
-  "9",
-  "8",
-  "7",
-  "6",
-  "5",
-  "4",
-  "3",
-  "2",
-];
-
-const SUITS: Array<{ value: Suit; symbol: string; label: string }> = [
-  { value: "spades", symbol: "♠", label: "Espadas" },
-  { value: "hearts", symbol: "♥", label: "Copas" },
-  { value: "diamonds", symbol: "♦", label: "Ouros" },
-  { value: "clubs", symbol: "♣", label: "Paus" },
-];
 
 const PRESSURE_LABELS: Record<Pressure, string> = {
   unopened: "Ninguém aumentou",
@@ -141,42 +98,12 @@ const PRESSURE_LABELS: Record<Pressure, string> = {
   allIn: "Há um all-in",
 };
 
-const ACTION_RECOMMENDATION_LABELS: Record<string, string> = {
-  FOLD: "DESISTA",
-  CHECK: "DÊ CHECK",
-  CALL: "PAGUE",
-  RAISE: "AUMENTE",
-  ALL_IN: "VÁ ALL-IN",
-};
-
-const CONFIDENCE_LABELS: Record<string, string> = {
-  high: "Alta",
-  medium: "Média",
-  low: "Baixa",
-  alta: "Alta",
-  media: "Média",
-  média: "Média",
-  baixa: "Baixa",
-};
-
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function clampNumber(value: number, min = 0, max = 1_000_000) {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
-}
-
-function cardKey(card: Card) {
-  return `${card.rank}-${card.suit}`;
-}
-
-function suitSymbol(suit: Suit) {
-  return SUITS.find((item) => item.value === suit)?.symbol ?? "?";
-}
-
-function isRedSuit(suit: Suit) {
-  return suit === "hearts" || suit === "diamonds";
 }
 
 function friendlyPosition(position?: string) {
@@ -287,7 +214,7 @@ function IconButton({
 
 function Brand() {
   return (
-    <div className="brand" aria-label="Mesa Certa">
+    <div className="brand" role="img" aria-label="Mesa Certa">
       <span className="brandMark" aria-hidden="true">
         <Spade size={24} strokeWidth={2.75} />
       </span>
@@ -432,94 +359,6 @@ function BottomNav({
         );
       })}
     </nav>
-  );
-}
-
-function CardFace({
-  card,
-  size = "medium",
-  onClick,
-  label,
-}: {
-  card?: Card;
-  size?: "small" | "medium" | "large";
-  onClick?: () => void;
-  label: string;
-}) {
-  const content = card ? (
-    <>
-      <strong>{card.rank}</strong>
-      <span>{suitSymbol(card.suit)}</span>
-    </>
-  ) : (
-    // Dashed slot, no caption — the 6px "carta" label is below the size floor.
-    <Plus size={size === "small" ? 16 : 24} strokeWidth={2.75} />
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        className={`playingCard ${size} ${
-          card && isRedSuit(card.suit) ? "red" : ""
-        } ${card ? "filled" : "empty"}`}
-        onClick={onClick}
-        aria-label={label}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <span
-      className={`playingCard ${size} ${
-        card && isRedSuit(card.suit) ? "red" : ""
-      } ${card ? "filled" : "empty"}`}
-      aria-label={label}
-    >
-      {content}
-    </span>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  prefix = "R$",
-  min = 0,
-  step = 1,
-  hint,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  prefix?: string;
-  min?: number;
-  step?: number;
-  hint?: string;
-}) {
-  return (
-    <label className="numberField">
-      <span className="fieldLabel">
-        {label}
-        {hint && <small>{hint}</small>}
-      </span>
-      <span className="numberInput">
-        <small>{prefix}</small>
-        <EditableNumberInput
-          inputMode="decimal"
-          min={min}
-          max={1_000_000}
-          step={step}
-          value={value}
-          onValueChange={(nextValue) =>
-            onChange(clampNumber(nextValue, min))
-          }
-        />
-      </span>
-    </label>
   );
 }
 
@@ -1257,8 +1096,13 @@ function MobileCardsDock({
   onHeroCard: (index: number) => void;
   onBoardCard: (index: number) => void;
 }) {
+  const preflop = board.length === 0;
+
   return (
-    <section className="mobileCardsDock" aria-label="Acesso rápido às cartas">
+    <section
+      className={`mobileCardsDock ${preflop ? "preflop" : ""}`}
+      aria-label="Acesso rápido às cartas"
+    >
       <div className="mobileCardGroup heroQuickCards">
         <span>Sua mão</span>
         <div>
@@ -1277,25 +1121,38 @@ function MobileCardsDock({
           ))}
         </div>
       </div>
-      <i aria-hidden="true" />
-      <div className="mobileCardGroup boardQuickCards">
-        <span>Mesa</span>
-        <div>
-          {Array.from({ length: 5 }, (_, index) => (
-            <CardFace
-              key={index}
-              card={board[index]}
-              size="small"
-              label={
-                board[index]
-                  ? `Trocar carta ${index + 1} da mesa`
-                  : `Adicionar carta ${index + 1} da mesa`
-              }
-              onClick={() => onBoardCard(index)}
-            />
-          ))}
-        </div>
-      </div>
+      {preflop ? (
+        <button
+          type="button"
+          className="addBoardShortcut"
+          onClick={() => onBoardCard(0)}
+        >
+          <Plus size={16} aria-hidden="true" />
+          Adicionar flop
+        </button>
+      ) : (
+        <>
+          <i aria-hidden="true" />
+          <div className="mobileCardGroup boardQuickCards">
+            <span>Mesa</span>
+            <div>
+              {Array.from({ length: 5 }, (_, index) => (
+                <CardFace
+                  key={index}
+                  card={board[index]}
+                  size="small"
+                  label={
+                    board[index]
+                      ? `Trocar carta ${index + 1} da mesa`
+                      : `Adicionar carta ${index + 1} da mesa`
+                  }
+                  onClick={() => onBoardCard(index)}
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -1358,191 +1215,6 @@ function EndSessionDialog({
         </div>
       </section>
     </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "good" | "warning";
-}) {
-  return (
-    <div className={`metric ${tone ?? ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function AdviceCard({
-  enabled,
-  analysis,
-  complete,
-  recalculating = false,
-  onEnable,
-}: {
-  enabled: boolean;
-  analysis: PokerAnalysis | null;
-  complete: boolean;
-  /** Há uma simulação em andamento; os números visíveis são do spot anterior. */
-  recalculating?: boolean;
-  onEnable: () => void;
-}) {
-  if (!enabled) {
-    return (
-      <section className="adviceCard paused">
-        <div className="adviceIcon">
-          <EyeOff size={21} />
-        </div>
-        <div>
-          <span className="eyebrow">Copilot pausado</span>
-          <h2>Você está jogando por conta própria.</h2>
-          <p>
-            A mão continua sendo registrada, mas nenhum conselho fica visível.
-          </p>
-        </div>
-        <button type="button" className="inlineButton" onClick={onEnable}>
-          <Eye size={16} /> Ativar agora
-        </button>
-      </section>
-    );
-  }
-
-  if (!complete || !analysis) {
-    // A primeira análise de um spot completo ainda está rodando no worker.
-    const computing = complete && recalculating;
-    return (
-      <section className="adviceCard waiting">
-        <div className="adviceIcon">
-          {computing ? <span className="miniSpinner" /> : <Sparkles size={21} />}
-        </div>
-        <div>
-          <span className="eyebrow">
-            {computing ? "Calculando" : "Copilot pronto"}
-          </span>
-          <h2>
-            {computing
-              ? "Analisando a situação."
-              : "Adicione suas duas cartas."}
-          </h2>
-          <p>
-            {computing
-              ? "A simulação roda fora da interface para não travar o aplicativo."
-              : "A recomendação aparece assim que a situação estiver completa."}
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  const action = ACTION_RECOMMENDATION_LABELS[analysis.action] ?? analysis.action;
-  const amount =
-    (analysis.action === "RAISE" || analysis.action === "ALL_IN") &&
-    analysis.amount > 0
-      ? ` PARA ${formatMoney(analysis.amount)}`
-      : "";
-  const equityTone =
-    analysis.equity >= analysis.potOdds ? "good" : ("warning" as const);
-
-  return (
-    <section
-      className={`adviceCard live action-${analysis.action.toLowerCase()} ${
-        recalculating ? "recalculating" : ""
-      }`}
-    >
-      <div className="adviceTop">
-        <span className="eyebrow">
-          <Sparkles size={16} />
-          Melhor decisão agora
-        </span>
-        {recalculating ? (
-          <span className="confidencePill recalculatingPill">
-            <span className="miniSpinner" />
-            Recalculando
-          </span>
-        ) : (
-          <span className="confidencePill">
-            Confiança{" "}
-            {CONFIDENCE_LABELS[String(analysis.confidence).toLowerCase()] ??
-              analysis.confidence}
-          </span>
-        )}
-      </div>
-      <div className="adviceDecision">
-        <div className="adviceIcon">
-          {analysis.action === "FOLD" ? (
-            <X size={24} />
-          ) : analysis.action === "CHECK" ? (
-            <Check size={24} />
-          ) : (
-            <Target size={24} />
-          )}
-        </div>
-        <div>
-          <span>Recomendação</span>
-          <h2>
-            {action}
-            {amount}
-          </h2>
-        </div>
-      </div>
-      {analysis.marginal && (
-        <p className="marginalBadge">
-          <Scale size={14} aria-hidden="true" />
-          Decisão marginal ·{" "}
-          {Math.abs(analysis.margin).toLocaleString("pt-BR", {
-            maximumFractionDigits: 1,
-          })}{" "}
-          ponto{Math.abs(analysis.margin) === 1 ? "" : "s"} de diferença
-        </p>
-      )}
-      <p className="adviceReason">{analysis.reason}</p>
-      <div className="metricGrid">
-        <Metric
-          label="Sua equidade"
-          value={`${Math.round(analysis.equity)}%`}
-          tone={equityTone}
-        />
-        <Metric
-          label="Pot odds"
-          value={`${Math.round(analysis.potOdds)}%`}
-        />
-        <Metric label="Outs" value={String(analysis.outs)} />
-        <Metric label="SPR" value={analysis.spr.toFixed(1)} />
-      </div>
-      <div className="equityTrack" aria-hidden="true">
-        <span style={{ width: `${Math.round(analysis.equity)}%` }} />
-        <i style={{ left: `${Math.round(analysis.potOdds)}%` }} />
-      </div>
-      <p className="equityLegend">
-        <span className="legendEquity">
-          Sua equidade {Math.round(analysis.equity)}%
-        </span>
-        <span className="legendOdds">
-          Pot odds {Math.round(analysis.potOdds)}%
-        </span>
-      </p>
-      <details className="explanation">
-        <summary>
-          <Lightbulb size={16} />
-          Entender esta decisão
-          <ChevronRight size={16} />
-        </summary>
-        <div>
-          <p>
-            <strong>{analysis.handName}.</strong> {analysis.teachingPoint}
-          </p>
-          <div className="analysisTags">
-            <span>{analysis.texture.label}</span>
-            <span>{analysis.rangeLabel}</span>
-          </div>
-        </div>
-      </details>
-    </section>
   );
 }
 
@@ -1675,6 +1347,8 @@ function LiveTable({
   ]);
 
   const { analysis, pending: analysisPending } = useSpotAnalysis(spot);
+  const spotComplete =
+    heroCards.length === 2 && [0, 3, 4, 5].includes(board.length);
 
   const usedCards = useMemo(
     () => new Set([...heroCards, ...board].map(cardKey)),
@@ -1944,21 +1618,27 @@ function LiveTable({
       actualAction,
       equity: heroDecision?.equity ?? analysis?.equity,
       lesson: heroDecision?.lesson ?? analysis?.teachingPoint,
+      actions,
     };
 
     window.localStorage.removeItem(handDraftKey);
     setDraftRestored(false);
     updateData((current) => {
       if (!current.session) return current;
-      const nextPlayers = current.session.players.map((player) =>
-        player.id === current.session?.heroId
-          ? { ...player, stack: Math.max(0, player.stack + result) }
-          : player,
-      );
+      const nextHands = [...current.session.hands, record];
+      const nextPlayers = current.session.players.map((player) => {
+        if (player.id === current.session?.heroId) {
+          return { ...player, stack: Math.max(0, player.stack + result) };
+        }
+        return {
+          ...player,
+          style: deriveOpponentStats(nextHands, player.id).style,
+        };
+      });
       const withRecord = {
         ...current.session,
         players: nextPlayers,
-        hands: [...current.session.hands, record],
+        hands: nextHands,
       };
       return {
         ...current,
@@ -2006,6 +1686,18 @@ function LiveTable({
 
   return (
     <div className="liveLayout pageEnter">
+      <MobileDecisionBar
+        enabled={data.copilotEnabled}
+        analysis={analysis}
+        complete={spotComplete}
+        recalculating={analysisPending}
+        onEnable={() =>
+          updateData((current) => ({
+            ...current,
+            copilotEnabled: true,
+          }))
+        }
+      />
       <section className="tableColumn">
         <div className="sessionHeader">
           <div>
@@ -2303,9 +1995,7 @@ function LiveTable({
         <AdviceCard
           enabled={data.copilotEnabled}
           analysis={analysis}
-          complete={
-            heroCards.length === 2 && [0, 3, 4, 5].includes(board.length)
-          }
+          complete={spotComplete}
           recalculating={analysisPending}
           onEnable={() =>
             updateData((current) => ({
@@ -2398,6 +2088,23 @@ function SessionEndedView({
   notify: (message: string) => void;
 }) {
   const sessionResult = totalSessionResult(session);
+  const actualRecommendation: Record<TableAction, string> = {
+    fold: "FOLD",
+    check: "CHECK",
+    call: "CALL",
+    bet: "RAISE",
+    raise: "RAISE",
+    allIn: "ALL_IN",
+  };
+  const mistakes = session.hands
+    .filter(
+      (hand) =>
+        hand.actualAction &&
+        hand.recommendedAction &&
+        actualRecommendation[hand.actualAction] !== hand.recommendedAction,
+    )
+    .sort((first, second) => first.result - second.result)
+    .slice(0, 3);
 
   return (
     <section className="sessionEndedPage pageEnter">
@@ -2427,6 +2134,29 @@ function SessionEndedView({
           <strong>{session.name}</strong>
         </span>
       </div>
+      <section className="sessionReview" aria-labelledby="session-review-title">
+        <div>
+          <span className="eyebrow">Revisão pós-sessão</span>
+          <h2 id="session-review-title">Seus 3 maiores pontos de revisão</h2>
+        </div>
+        {mistakes.length ? (
+          <div className="sessionReviewGrid">
+            {mistakes.map((hand) => (
+              <article key={hand.id}>
+                <span>Mão {hand.handNumber} · {hand.position}</span>
+                <strong>
+                  {ACTION_LABELS[hand.actualAction!]} → {actionRecommendationLabel(hand.recommendedAction!)}
+                </strong>
+                <p>{hand.lesson ?? "Compare preço, posição e range antes de repetir essa linha."}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="sessionReviewEmpty">
+            Nenhum desvio registrado ainda. Continue salvando suas decisões para receber uma revisão útil.
+          </p>
+        )}
+      </section>
       <div className="sessionEndedActions">
         <button
           type="button"
@@ -2455,867 +2185,6 @@ function SessionEndedView({
           <RotateCcw size={16} />
           Reabrir esta mesa
         </button>
-      </div>
-    </section>
-  );
-}
-
-function TrainingView({
-  data,
-  updateData,
-}: {
-  data: AppData;
-  updateData: (updater: (current: AppData) => AppData) => void;
-}) {
-  const [practiceProgress, setPracticeProgress] = useState(
-    createEmptyTrainingProgress,
-  );
-  const questions = useMemo(
-    () => adaptiveTrainingQuestions(practiceProgress),
-    [practiceProgress],
-  );
-  const focus = useMemo(
-    () => recommendedTrainingFocus(practiceProgress),
-    [practiceProgress],
-  );
-  const [questionIndex, setQuestionIndex] = useState(
-    data.trainingAnswered % questions.length,
-  );
-  const [answer, setAnswer] = useState<number | null>(null);
-  const question = questions[questionIndex % questions.length];
-  const accuracy = data.trainingAnswered
-    ? Math.round((data.trainingCorrect / data.trainingAnswered) * 100)
-    : 0;
-
-  useEffect(() => {
-    const refreshProgress = () => setPracticeProgress(loadTrainingProgress());
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refreshProgress();
-    };
-    refreshProgress();
-    window.addEventListener("storage", refreshProgress);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.removeEventListener("storage", refreshProgress);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, []);
-
-  const chooseAnswer = (index: number) => {
-    if (answer !== null) return;
-    setAnswer(index);
-    updateData((current) => ({
-      ...current,
-      trainingAnswered: current.trainingAnswered + 1,
-      trainingCorrect:
-        current.trainingCorrect + (index === question.correct ? 1 : 0),
-    }));
-  };
-
-  const nextQuestion = () => {
-    setQuestionIndex((current) => (current + 1) % questions.length);
-    setAnswer(null);
-  };
-
-  return (
-    <section className="contentPage trainingPage pageEnter">
-      <div className="pageHeading">
-        <div>
-          <span className="eyebrow gold">
-            <Brain size={16} />
-            Treinador pessoal
-          </span>
-          <h1>Pratique decisões, não decore respostas.</h1>
-          <p>Exercícios curtos baseados nos conceitos que mais ganham fichas.</p>
-        </div>
-        <div
-          className="scoreRing"
-          style={{ "--score": `${accuracy}%` } as CSSProperties}
-        >
-          <span>
-            <strong>{accuracy}%</strong>
-            <small>acertos</small>
-          </span>
-        </div>
-      </div>
-
-      <div className="trainingGrid">
-        <article className="quizCard surfaceCard">
-          <div className="quizTop">
-            <span className="eyebrow">{question.eyebrow} · {focus.streetLabel}</span>
-            <span>
-              Questão {(questionIndex % questions.length) + 1}/
-              {questions.length}
-            </span>
-          </div>
-          <h2>{question.question}</h2>
-          <div className="quizOptions">
-            {question.options.map((option, index) => {
-              const revealed = answer !== null;
-              const correct = index === question.correct;
-              const selected = index === answer;
-              return (
-                <button
-                  type="button"
-                  key={option}
-                  className={`${selected ? "selected" : ""} ${
-                    revealed && correct ? "correct" : ""
-                  } ${revealed && selected && !correct ? "wrong" : ""}`}
-                  onClick={() => chooseAnswer(index)}
-                >
-                  <span>{String.fromCharCode(65 + index)}</span>
-                  {option}
-                  {revealed && correct && <Check size={18} />}
-                  {revealed && selected && !correct && <X size={18} />}
-                </button>
-              );
-            })}
-          </div>
-          {answer !== null && (
-            <div className="quizFeedback">
-              <Lightbulb size={21} />
-              <div>
-                <strong>
-                  {answer === question.correct ? "Boa decisão." : "Quase lá."}
-                </strong>
-                <p>{question.explanation}</p>
-              </div>
-            </div>
-          )}
-          <button
-            type="button"
-            className="primaryButton"
-            disabled={answer === null}
-            onClick={nextQuestion}
-          >
-            Próxima situação <ChevronRight size={18} />
-          </button>
-        </article>
-
-        <aside className="lessonStack">
-          <a className="lessonCard trainingPlayCard" href="/treino">
-            <span className="lessonIcon">
-              <Users size={21} />
-            </span>
-            <div>
-              <small>Recomendado · {focus.streetLabel}</small>
-              <h3>{focus.title}</h3>
-              <p>{focus.description} O professor ajusta a mesa automaticamente.</p>
-            </div>
-            <ChevronRight size={21} />
-          </a>
-          <article className="lessonCard preflop">
-            <span className="lessonIcon">
-              <Spade size={21} />
-            </span>
-            <div>
-              <small>Trilha 01 · 6 min</small>
-              <h3>Seleção de mãos pré-flop</h3>
-              <p>Saiba quando entrar, aumentar ou abandonar pela posição.</p>
-            </div>
-            <ChevronRight size={21} />
-          </article>
-          <article className="lessonCard math">
-            <span className="lessonIcon">
-              <Gauge size={21} />
-            </span>
-            <div>
-              <small>Trilha 02 · 8 min</small>
-              <h3>Outs, equidade e pot odds</h3>
-              <p>Transforme probabilidades em decisões simples.</p>
-            </div>
-            <ChevronRight size={21} />
-          </article>
-          <article className="lessonCard mindset">
-            <span className="lessonIcon">
-              <HeartPulse size={21} />
-            </span>
-            <div>
-              <small>Trilha 03 · 4 min</small>
-              <h3>Disciplina contra o tilt</h3>
-              <p>Reconheça quando a emoção começa a decidir por você.</p>
-            </div>
-            <ChevronRight size={21} />
-          </article>
-        </aside>
-      </div>
-    </section>
-  );
-}
-
-function MiniCardRow({ cards }: { cards: Card[] }) {
-  return (
-    <div className="miniCardRow">
-      {cards.map((card, index) => (
-        <CardFace
-          key={`${cardKey(card)}-${index}`}
-          card={card}
-          size="small"
-          label={`${card.rank} de ${
-            SUITS.find((suit) => suit.value === card.suit)?.label
-          }`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function HistoryView({ data }: { data: AppData }) {
-  const hands = data.archivedHands;
-  const total = hands.reduce((sum, hand) => sum + hand.result, 0);
-  const withAdvice = hands.filter((hand) => hand.recommendedAction);
-  const followed = withAdvice.filter(
-    (hand) => {
-      if (!hand.actualAction || !hand.recommendedAction) return false;
-      const actualMap: Record<TableAction, string> = {
-        fold: "FOLD",
-        check: "CHECK",
-        call: "CALL",
-        bet: "RAISE",
-        raise: "RAISE",
-        allIn: "ALL_IN",
-      };
-      return actualMap[hand.actualAction] === hand.recommendedAction;
-    },
-  ).length;
-  const discipline = withAdvice.length
-    ? Math.round((followed / withAdvice.length) * 100)
-    : 0;
-
-  return (
-    <section className="contentPage historyPage pageEnter">
-      <div className="pageHeading">
-        <div>
-          <span className="eyebrow gold">
-            <History size={16} />
-            Sua evolução
-          </span>
-          <h1>Cada mão deixa uma lição.</h1>
-          <p>Revise decisões importantes sem precisar lembrar dos detalhes.</p>
-        </div>
-      </div>
-
-      <div className="summaryCards">
-        <article>
-          <span>Resultado registrado</span>
-          <strong className={total >= 0 ? "positive" : "negative"}>
-            {total >= 0 ? "+" : ""}
-            {formatMoney(total)}
-          </strong>
-          <small>{hands.length} mãos salvas</small>
-        </article>
-        <article>
-          <span>Disciplina</span>
-          <strong>{discipline}%</strong>
-          <small>decisões alinhadas ao plano</small>
-        </article>
-        <article>
-          <span>Foco sugerido</span>
-          <strong>Pré-flop</strong>
-          <small>melhor oportunidade de evolução</small>
-        </article>
-      </div>
-
-      {!hands.length ? (
-        <div className="emptyState surfaceCard">
-          <span>
-            <BookOpen size={24} />
-          </span>
-          <h2>Seu histórico começa na próxima mão.</h2>
-          <p>
-            Salve o resultado ao tocar em “Próxima mão” e volte aqui para
-            revisar.
-          </p>
-        </div>
-      ) : (
-        <div className="handHistoryList">
-          {hands.map((hand) => (
-            <details className="handHistoryCard surfaceCard" key={hand.id}>
-              <summary>
-                <div className="handIndex">
-                  <span>#{hand.handNumber}</span>
-                  <small>
-                    {new Intl.DateTimeFormat("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }).format(new Date(hand.playedAt))}
-                  </small>
-                </div>
-                <MiniCardRow cards={hand.heroCards} />
-                <div className="handSummary">
-                  <strong>{hand.position}</strong>
-                  <small>
-                    {hand.recommendedAction
-                      ? ACTION_RECOMMENDATION_LABELS[
-                          hand.recommendedAction
-                        ] ?? hand.recommendedAction
-                      : "Sem análise"}
-                  </small>
-                </div>
-                <strong
-                  className={`handResult ${
-                    hand.result >= 0 ? "positive" : "negative"
-                  }`}
-                >
-                  {hand.result >= 0 ? "+" : ""}
-                  {formatMoney(hand.result)}
-                </strong>
-                <ChevronRight size={18} />
-              </summary>
-              <div className="handDetails">
-                <div>
-                  <span>Mesa</span>
-                  {hand.board.length ? (
-                    <MiniCardRow cards={hand.board} />
-                  ) : (
-                    <strong>Pré-flop</strong>
-                  )}
-                </div>
-                <div>
-                  <span>Equidade estimada</span>
-                  <strong>
-                    {hand.equity === undefined
-                      ? "—"
-                      : `${Math.round(hand.equity)}%`}
-                  </strong>
-                </div>
-                <div className="lessonNote">
-                  <Lightbulb size={18} />
-                  <p>{hand.lesson ?? "Revise o contexto antes da próxima sessão."}</p>
-                </div>
-              </div>
-            </details>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MoodSelector({
-  value,
-  onChange,
-}: {
-  value: Mood;
-  onChange: (mood: Mood) => void;
-}) {
-  const options: Array<{
-    id: Mood;
-    icon: ReactNode;
-    description: string;
-  }> = [
-    {
-      id: "focused",
-      icon: <Target size={21} />,
-      description: "Plano normal",
-    },
-    {
-      id: "tired",
-      icon: <Moon size={21} />,
-      description: "Mais seletivo",
-    },
-    {
-      id: "tilted",
-      icon: <HeartPulse size={21} />,
-      description: "Proteção máxima",
-    },
-  ];
-  return (
-    <div className="moodSelector">
-      {options.map((option) => (
-        <button
-          type="button"
-          key={option.id}
-          className={value === option.id ? "active" : ""}
-          onClick={() => onChange(option.id)}
-        >
-          {option.icon}
-          <span>
-            <strong>{MOOD_LABELS[option.id]}</strong>
-            <small>{option.description}</small>
-          </span>
-          {value === option.id && <Check size={16} />}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ProfileView({
-  data,
-  updateData,
-  notify,
-}: {
-  data: AppData;
-  updateData: (updater: (current: AppData) => AppData) => void;
-  notify: (message: string) => void;
-}) {
-  const session = data.session;
-  const [syncCodeDraft, setSyncCodeDraft] = useState(data.syncCode ?? "");
-  const [showSyncCode, setShowSyncCode] = useState(false);
-  const [confirmCloudDelete, setConfirmCloudDelete] = useState(false);
-  const [syncFeedback, setSyncFeedback] = useState<SyncFeedback>({
-    state: "idle",
-    message: data.lastCloudSync
-      ? `Última cópia em ${new Intl.DateTimeFormat("pt-BR", {
-          dateStyle: "short",
-          timeStyle: "short",
-        }).format(new Date(data.lastCloudSync))}`
-      : "Ainda não sincronizado",
-  });
-
-  const updatePlayer = (
-    playerId: string,
-    patch: { style?: PlayerStyle; notes?: string; active?: boolean },
-  ) => {
-    if (
-      patch.active === false &&
-      session &&
-      session.players.filter((player) => player.active).length <= 2
-    ) {
-      notify("A mesa precisa manter pelo menos dois jogadores ativos.");
-      return;
-    }
-    updateData((current) => {
-      if (!current.session) return current;
-      return {
-        ...current,
-        session: {
-          ...current.session,
-          players: current.session.players.map((player) =>
-            player.id === playerId ? { ...player, ...patch } : player,
-          ),
-        },
-      };
-    });
-  };
-
-  const ensureSyncCode = async () => {
-    const existing = syncCodeDraft.trim() || data.syncCode;
-    if (existing) {
-      if (existing !== data.syncCode) {
-        updateData((current) => ({ ...current, syncCode: existing }));
-      }
-      return existing;
-    }
-    const { createSyncCode } = await import("@/lib/cloud-sync");
-    const code = createSyncCode();
-    setSyncCodeDraft(code);
-    updateData((current) => ({ ...current, syncCode: code }));
-    return code;
-  };
-
-  const saveCloud = async () => {
-    setSyncFeedback({ state: "working", message: "Salvando cópia segura…" });
-    try {
-      const code = await ensureSyncCode();
-      const { saveToCloud } = await import("@/lib/cloud-sync");
-      const { syncCode: _secret, ...withoutSecret } = data;
-      const result = await saveToCloud(code, {
-        ...withoutSecret,
-        trainingProgress: trainingProgressForSync(loadTrainingProgress()),
-      });
-      if (!result.ok) throw new Error(result.message);
-      const now = new Date().toISOString();
-      updateData((current) => ({ ...current, lastCloudSync: now }));
-      setSyncFeedback({
-        state: "success",
-        message: "Sessões e progresso do treino salvos na nuvem.",
-      });
-    } catch (error) {
-      setSyncFeedback({
-        state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível sincronizar agora.",
-      });
-    }
-  };
-
-  const loadCloud = async () => {
-    const code = syncCodeDraft.trim() || data.syncCode;
-    if (!code) {
-      setSyncFeedback({
-        state: "error",
-        message: "Informe ou gere um código de sincronização primeiro.",
-      });
-      return;
-    }
-    setSyncFeedback({ state: "working", message: "Buscando sua cópia…" });
-    try {
-      const { loadFromCloud } = await import("@/lib/cloud-sync");
-      const result = await loadFromCloud<
-        AppData & { trainingProgress?: unknown }
-      >(code);
-      if (!result.ok) throw new Error(result.message);
-      const normalized = normalizeAppData(result.payload);
-      if (!normalized) {
-        throw new Error("O backup não contém dados válidos do Mesa Certa.");
-      }
-      if (result.payload.trainingProgress) {
-        const remoteProgress = normalizeTrainingProgress(
-          result.payload.trainingProgress,
-        );
-        const localProgress = loadTrainingProgress();
-        saveTrainingProgress({
-          ...remoteProgress,
-          history: localProgress.history.filter((hand) =>
-            remoteProgress.recordedHandIds.includes(hand.id),
-          ),
-        });
-      }
-      updateData(() => ({
-        ...normalized,
-        syncCode: code,
-        lastCloudSync: new Date().toISOString(),
-      }));
-      setSyncFeedback({
-        state: "success",
-        message: "Sessões e progresso do treino recuperados da nuvem.",
-      });
-    } catch (error) {
-      setSyncFeedback({
-        state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível recuperar a cópia.",
-      });
-    }
-  };
-
-  const copySyncCode = async () => {
-    const code = await ensureSyncCode();
-    await navigator.clipboard.writeText(code);
-    notify("Código copiado. Guarde-o em um lugar seguro.");
-  };
-
-  const deleteCloud = async () => {
-    const code = syncCodeDraft.trim() || data.syncCode;
-    if (!code) {
-      setSyncFeedback({
-        state: "error",
-        message: "Informe o código do backup que você quer apagar.",
-      });
-      return;
-    }
-    if (!confirmCloudDelete) {
-      setConfirmCloudDelete(true);
-      setSyncFeedback({
-        state: "idle",
-        message: "Toque novamente em “Apagar backup” para confirmar.",
-      });
-      return;
-    }
-
-    setSyncFeedback({ state: "working", message: "Apagando a cópia…" });
-    try {
-      const { deleteFromCloud } = await import("@/lib/cloud-sync");
-      const result = await deleteFromCloud(code);
-      if (!result.ok) throw new Error(result.message);
-      setConfirmCloudDelete(false);
-      updateData((current) => ({
-        ...current,
-        lastCloudSync: undefined,
-      }));
-      setSyncFeedback({
-        state: "success",
-        message:
-          "Backup apagado da nuvem. Os dados deste aparelho continuam aqui.",
-      });
-    } catch (error) {
-      setSyncFeedback({
-        state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível apagar o backup.",
-      });
-    }
-  };
-
-  const sessionResult = session ? totalSessionResult(session) : 0;
-  const bankroll = session
-    ? session.initialBankroll + sessionResult
-    : 0;
-  const lossPercent =
-    session && session.stopLoss > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (Math.abs(Math.min(0, sessionResult)) / session.stopLoss) * 100,
-          ),
-        )
-      : 0;
-
-  return (
-    <section className="contentPage profilePage pageEnter">
-      <div className="pageHeading">
-        <div>
-          <span className="eyebrow gold">
-            <Settings size={16} />
-            Seu jogo, suas regras
-          </span>
-          <h1>Disciplina também é uma vantagem.</h1>
-          <p>
-            Ajuste seu estado, acompanhe a banca e aprenda como cada amigo joga.
-          </p>
-        </div>
-      </div>
-
-      <div className="profileGrid">
-        <div className="profileMain">
-          <article className="bankrollCard surfaceCard">
-            <div className="cardHeading">
-              <span className="sectionIcon">
-                <CircleDollarSign size={21} />
-              </span>
-              <div>
-                <span className="eyebrow">Gestão de banca</span>
-                <h2>{session ? formatMoney(bankroll) : "Configure uma mesa"}</h2>
-              </div>
-            </div>
-            {session && (
-              <>
-                <div className="bankrollStats">
-                  <span>
-                    <small>Início</small>
-                    <strong>{formatMoney(session.initialBankroll)}</strong>
-                  </span>
-                  <span>
-                    <small>Sessão</small>
-                    <strong
-                      className={
-                        sessionResult >= 0 ? "positive" : "negative"
-                      }
-                    >
-                      {sessionResult >= 0 ? "+" : ""}
-                      {formatMoney(sessionResult)}
-                    </strong>
-                  </span>
-                  <span>
-                    <small>Stop-loss</small>
-                    <strong>{formatMoney(session.stopLoss)}</strong>
-                  </span>
-                </div>
-                <div className="lossMeter">
-                  <span>
-                    <i style={{ width: `${lossPercent}%` }} />
-                  </span>
-                  <small>{lossPercent}% do limite de perda utilizado</small>
-                </div>
-              </>
-            )}
-          </article>
-
-          <article className="mindsetCard surfaceCard">
-            <div className="cardHeading">
-              <span className="sectionIcon">
-                <HeartPulse size={21} />
-              </span>
-              <div>
-                <span className="eyebrow">Controle emocional</span>
-                <h2>Como você está agora?</h2>
-              </div>
-            </div>
-            <MoodSelector
-              value={data.mood}
-              onChange={(mood) =>
-                updateData((current) => ({ ...current, mood }))
-              }
-            />
-            <p className="mindsetNote">
-              <Info size={16} />
-              O Copilot aumenta a margem de segurança quando você está cansado
-              ou irritado.
-            </p>
-          </article>
-
-          <article className="opponentsCard surfaceCard">
-            <div className="cardHeading">
-              <span className="sectionIcon">
-                <Users size={21} />
-              </span>
-              <div>
-                <span className="eyebrow">Diário dos adversários</span>
-                <h2>Transforme observações em leitura.</h2>
-              </div>
-            </div>
-            {!session ? (
-              <p className="sectionHint">
-                Crie uma mesa para começar a observar seus adversários.
-              </p>
-            ) : (
-              <div className="opponentList">
-                {session.players
-                  .filter((player) => player.id !== session.heroId)
-                  .map((player) => (
-                    <details key={player.id} className="opponentRow">
-                      <summary>
-                        <span className="seatAvatar">
-                          {player.name.slice(0, 1)}
-                        </span>
-                        <span>
-                          <strong>{player.name}</strong>
-                          <small>{STYLE_LABELS[player.style]}</small>
-                        </span>
-                        <em
-                          className={player.active ? "active" : "inactive"}
-                        >
-                          {player.active ? "Na mesa" : "Pausado"}
-                        </em>
-                        <ChevronRight size={18} />
-                      </summary>
-                      <div className="opponentEditor">
-                        <label className="selectField">
-                          <span>Estilo observado</span>
-                          <select
-                            value={player.style}
-                            onChange={(event) =>
-                              updatePlayer(player.id, {
-                                style: event.target.value as PlayerStyle,
-                              })
-                            }
-                          >
-                            {(
-                              Object.keys(STYLE_LABELS) as PlayerStyle[]
-                            ).map((style) => (
-                              <option key={style} value={style}>
-                                {STYLE_LABELS[style]}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="textAreaField">
-                          <span>Notas rápidas</span>
-                          <textarea
-                            value={player.notes}
-                            placeholder="Ex.: blefa muito no river, só faz 3-bet forte…"
-                            onChange={(event) =>
-                              updatePlayer(player.id, {
-                                notes: event.target.value.slice(0, 500),
-                              })
-                            }
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="secondaryButton"
-                          onClick={() =>
-                            updatePlayer(player.id, {
-                              active: !player.active,
-                            })
-                          }
-                        >
-                          {player.active
-                            ? "Pausar nesta mesa"
-                            : "Voltar para a mesa"}
-                        </button>
-                      </div>
-                    </details>
-                  ))}
-              </div>
-            )}
-          </article>
-        </div>
-
-        <aside className="profileAside">
-          <article className="cloudCard surfaceCard">
-            <div className="cloudIllustration">
-              <Cloud size={24} />
-              <LockKeyhole size={16} />
-            </div>
-            <span className="eyebrow">Cofre na nuvem</span>
-            <h2>Seu jogo em qualquer aparelho.</h2>
-            <p>
-              Um código privado protege suas sessões, notas, quiz, estatísticas
-              e perfil de aprendizagem. Não usamos nomes reais como chave.
-            </p>
-            <label className="syncCodeLabel">
-              <span>Código privado</span>
-              <span className="syncCodeField">
-                <input
-                  type={showSyncCode ? "text" : "password"}
-                  value={syncCodeDraft}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Cole o código de outro aparelho"
-                  onChange={(event) => setSyncCodeDraft(event.target.value)}
-                />
-                <IconButton
-                  label={showSyncCode ? "Ocultar código" : "Mostrar código"}
-                  onClick={() => setShowSyncCode((current) => !current)}
-                >
-                  {showSyncCode ? <EyeOff size={16} /> : <Eye size={16} />}
-                </IconButton>
-                <IconButton label="Copiar código" onClick={copySyncCode}>
-                  <Copy size={16} />
-                </IconButton>
-              </span>
-            </label>
-            {!syncCodeDraft && !data.syncCode && (
-              <button
-                type="button"
-                className="secondaryButton fullButton"
-                onClick={copySyncCode}
-              >
-                <LockKeyhole size={16} />
-                Gerar código privado
-              </button>
-            )}
-            <div className="cloudActions">
-              <button
-                type="button"
-                onClick={saveCloud}
-                disabled={syncFeedback.state === "working"}
-              >
-                <CloudUpload size={16} /> Salvar
-              </button>
-              <button
-                type="button"
-                onClick={loadCloud}
-                disabled={syncFeedback.state === "working"}
-              >
-                <CloudDownload size={16} /> Recuperar
-              </button>
-            </div>
-            <button
-              type="button"
-              className={`cloudDeleteButton ${
-                confirmCloudDelete ? "confirming" : ""
-              }`}
-              onClick={deleteCloud}
-              disabled={syncFeedback.state === "working"}
-            >
-              <Trash2 size={16} />
-              {confirmCloudDelete
-                ? "Confirmar exclusão"
-                : "Apagar backup da nuvem"}
-            </button>
-            <small className={`syncFeedback ${syncFeedback.state}`}>
-              {syncFeedback.state === "working" && (
-                <span className="miniSpinner" />
-              )}
-              {syncFeedback.message}
-            </small>
-            <div className="legalLinks">
-              <a href="/privacidade">Privacidade</a>
-              <span>·</span>
-              <a href="/termos">Uso responsável</a>
-            </div>
-          </article>
-
-          <article className="responsibleCard">
-            <ShieldCheck size={21} />
-            <span className="eyebrow">Jogo responsável</span>
-            <h3>O melhor fold também protege sua banca.</h3>
-            <p>
-              O Mesa Certa não recebe apostas nem promete ganhos. Use limites e
-              faça pausas.
-            </p>
-          </article>
-        </aside>
       </div>
     </section>
   );
@@ -3423,7 +2292,14 @@ export default function PokerApp() {
         )}
       </div>
 
-      <BottomNav active={tab} onChange={setTab} handCount={handCount} />
+      <BottomNav
+        active={tab}
+        onChange={(nextTab) => {
+          setTab(nextTab);
+          window.scrollTo({ top: 0, behavior: "auto" });
+        }}
+        handCount={handCount}
+      />
 
       {toast && (
         <div className="toast" role="status">

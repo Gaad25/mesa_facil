@@ -195,9 +195,9 @@ select:not(:disabled) {
 }
 
 .playPokerCta small {
+  color: var(--color-neutral-100);
   font-size: 11px;
   font-weight: 600;
-  opacity: 0.68;
 }
 
 .connectionDot {
@@ -286,7 +286,7 @@ select:not(:disabled) {
 }
 
 .isOn .copilotWords strong {
-  color: var(--color-accent-2-600);
+  color: var(--color-accent-2-800);
 }
 
 .switchTrack {
@@ -331,7 +331,6 @@ select:not(:disabled) {
 
 @keyframes page-enter {
   from {
-    opacity: 0;
     transform: translateY(7px);
   }
   to {
@@ -1744,6 +1743,10 @@ button.playingCard:hover {
   gap: 16px;
 }
 
+.mobileDecisionBar {
+  display: none;
+}
+
 .adviceCard {
   position: relative;
   padding: var(--space-6);
@@ -2408,6 +2411,58 @@ button.playingCard:hover {
   gap: 9px;
 }
 
+.sessionReview {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  margin: 4px 0 20px;
+  padding: 18px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-100);
+  text-align: left;
+}
+
+.sessionReview h2 {
+  margin: 5px 0 0;
+  font-size: 20px;
+}
+
+.sessionReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sessionReviewGrid article {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-200);
+}
+
+.sessionReviewGrid span {
+  color: var(--color-neutral-700);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sessionReviewGrid strong {
+  color: var(--color-accent-800);
+  font-size: 12px;
+}
+
+.sessionReviewGrid p,
+.sessionReviewEmpty {
+  margin: 0;
+  color: var(--color-neutral-700);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .sessionEndedActions > button {
   justify-content: center;
 }
@@ -2771,7 +2826,7 @@ button.playingCard:hover {
 }
 
 .positive {
-  color: var(--color-accent-2-600) !important;
+  color: var(--color-accent-2-800) !important;
 }
 
 .negative {
@@ -3104,7 +3159,7 @@ button.playingCard:hover {
 }
 
 .opponentRow summary em.active {
-  color: var(--color-accent-2-600);
+  color: var(--color-accent-2-800);
   background: color-mix(in srgb, var(--color-accent-2) 7.5%, transparent);
 }
 
@@ -3129,6 +3184,37 @@ button.playingCard:hover {
   gap: 11px;
   padding: 14px;
   border-top: 1px solid var(--color-divider);
+}
+
+.opponentAutoStats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opponentAutoStats > span {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-200);
+}
+
+.opponentAutoStats small {
+  color: var(--color-neutral-700);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.opponentAutoStats strong {
+  font-family: var(--font-heading);
+  font-size: 18px;
+}
+
+.opponentEditor .textAreaField {
+  grid-column: 1 / -1;
 }
 
 .textAreaField textarea {
@@ -3795,6 +3881,25 @@ button.playingCard:hover {
     flex: 0 0 auto;
   }
 
+  .mobileCardsDock.preflop {
+    align-items: center;
+  }
+
+  .addBoardShortcut {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 13px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 24%, transparent);
+    border-radius: 999px;
+    color: var(--color-accent-800);
+    background: var(--color-accent-100);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
   .moodChip {
     min-width: 42px;
     padding: 0 11px;
@@ -3822,10 +3927,10 @@ button.playingCard:hover {
   }
 
   .tableSeat {
-    min-width: 92px;
+    min-width: 108px;
     min-height: 52px;
-    gap: 7px;
-    padding: 0 12px 0 5px;
+    gap: 5px;
+    padding: 0 8px 0 5px;
     border-radius: 999px;
   }
 
@@ -3837,8 +3942,8 @@ button.playingCard:hover {
   }
 
   .seatMeta strong {
-    max-width: 40px;
-    font-size: 12px;
+    max-width: 54px;
+    font-size: 11px;
   }
 
   .seatMeta small {
@@ -3918,22 +4023,14 @@ button.playingCard:hover {
 
   .quickValues,
   .pressurePicker > div {
-    flex-wrap: nowrap;
-    margin-right: -14px;
-    padding-right: 14px;
-    padding-bottom: 3px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .quickValues::-webkit-scrollbar,
-  .pressurePicker > div::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .quickValues button,
   .pressurePicker button {
     flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .actionActorRow {
@@ -3946,6 +4043,166 @@ button.playingCard:hover {
 
   .copilotColumn {
     grid-template-columns: 1fr;
+  }
+
+  .copilotColumn > .adviceCard {
+    display: none;
+  }
+
+  .liveLayout {
+    padding-bottom: 76px;
+  }
+
+  .mobileDecisionBar {
+    position: fixed;
+    z-index: 49;
+    right: 0;
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    left: 0;
+    display: block;
+    border: 0;
+    border-bottom: 1px solid var(--color-divider);
+    border-radius: 16px 16px 0 0;
+    color: var(--color-neutral-100);
+    background: var(--color-accent-800);
+    box-shadow: 0 -8px 28px color-mix(in srgb, var(--color-neutral-900) 18%, transparent);
+  }
+
+  .mobileDecisionBar > summary {
+    min-height: 58px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 13px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .mobileDecisionBar > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobileDecisionBar > summary > strong {
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .mobileDecisionLabel {
+    color: color-mix(in srgb, var(--color-neutral-100) 76%, transparent);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileDecisionEquity {
+    display: grid;
+    justify-items: end;
+    font-family: var(--font-heading);
+    font-size: 15px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .mobileDecisionEquity small {
+    margin-bottom: 3px;
+    color: color-mix(in srgb, var(--color-neutral-100) 72%, transparent);
+    font-family: var(--font-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .mobileDecisionBar[open] > summary > svg {
+    transform: rotate(90deg);
+  }
+
+  .mobileDecisionDetails {
+    max-height: min(54dvh, 390px);
+    display: grid;
+    gap: 12px;
+    padding: 2px 14px 16px;
+    overflow-y: auto;
+  }
+
+  .mobileDecisionDetails > p {
+    margin: 0;
+    color: color-mix(in srgb, var(--color-neutral-100) 86%, transparent);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .mobileDecisionDetails > div {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+  }
+
+  .mobileDecisionDetails > div > span {
+    display: grid;
+    gap: 3px;
+    padding: 9px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-neutral-100) 10%, transparent);
+    font-size: 10px;
+  }
+
+  .mobileDecisionDetails > div strong {
+    font-family: var(--font-heading);
+    font-size: 17px;
+  }
+
+  .mobileDecisionDetails > small {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    color: color-mix(in srgb, var(--color-neutral-100) 82%, transparent);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .mobileDecisionBar.paused,
+  .mobileDecisionBar.waiting {
+    min-height: 58px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 14px;
+  }
+
+  section.mobileDecisionBar.paused,
+  section.mobileDecisionBar.waiting {
+    display: flex;
+  }
+
+  .mobileDecisionBar.paused > span,
+  .mobileDecisionBar.waiting > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mobileDecisionBar.paused > button {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    color: var(--color-accent-800);
+    background: var(--color-neutral-100);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mobileDecisionBar.recalculating > summary > strong,
+  .mobileDecisionBar.recalculating .mobileDecisionEquity {
+    opacity: 0.58;
   }
 
   .adviceCard {
@@ -4013,6 +4270,10 @@ button.playingCard:hover {
 
   .sessionEndedStats > span:last-child {
     grid-column: 1 / -1;
+  }
+
+  .sessionReviewGrid {
+    grid-template-columns: 1fr;
   }
 
   .rankGrid {

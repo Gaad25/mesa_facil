@@ -1,4 +1,23 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+function formatViolations(
+  violations: Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"],
+) {
+  return violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    targets: violation.nodes.flatMap((node) => node.target),
+  }));
+}
+
+async function expectNoA11yViolations(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(formatViolations(results.violations)).toEqual([]);
+}
 
 /**
  * Cria uma sessão e semeia um spot conhecido no rascunho da mão. Digitar as
@@ -110,4 +129,106 @@ test("não deixa números vencidos na tela enquanto recalcula", async ({
 
   const after = await page.locator(".adviceReason").textContent();
   expect(after).not.toEqual(before);
+});
+
+test("mantém decisão, valor e equidade fixos acima da navegação no celular", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 812 });
+  await openSeededHand(page);
+
+  const decision = page.locator(".mobileDecisionBar.live");
+  const navigation = page.locator(".bottomNav");
+  await expect(decision).toBeVisible();
+  await expect(decision).toContainText("Melhor agora");
+  await expect(decision).toContainText("Equidade");
+
+  const decisionBox = await decision.boundingBox();
+  const navigationBox = await navigation.boundingBox();
+  expect(decisionBox).not.toBeNull();
+  expect(navigationBox).not.toBeNull();
+  expect(decisionBox!.y + decisionBox!.height).toBeLessThanOrEqual(
+    navigationBox!.y + 1,
+  );
+  expect(decisionBox!.y).toBeGreaterThanOrEqual(0);
+
+  await decision.locator("summary").click();
+  await expect(decision.locator(".mobileDecisionDetails")).toBeVisible();
+  await expect(decision).toContainText("Pot odds");
+});
+
+test("compacta cartas no pré-flop e não corta nomes ou chips", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 812 });
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: /Escolher assentos/ }).click();
+  await page.getByRole("button", { name: /Começar a sessão/ }).click();
+
+  const dock = page.locator(".mobileCardsDock.preflop");
+  await expect(dock).toBeVisible();
+  await expect(dock.getByRole("button", { name: "Adicionar flop" })).toBeVisible();
+  await expect(dock.locator(".boardQuickCards")).toHaveCount(0);
+
+  const lucas = page.getByRole("button", { name: /^Lucas,/ }).locator(".seatMeta strong");
+  await expect(lucas).toHaveText("Lucas");
+  expect(
+    await lucas.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+
+  for (const chip of await page.locator(".quickValues button, .pressurePicker button").all()) {
+    expect(
+      await chip.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
+  }
+});
+
+test("@a11y não apresenta violações WCAG A/AA na mesa ao vivo", async ({ page }) => {
+  await openSeededHand(page);
+  await expect(recommendation(page)).toHaveText(/\S/);
+  await expectNoA11yViolations(page);
+});
+
+test("@a11y não apresenta violações WCAG A/AA na decisão móvel", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 812 });
+  await openSeededHand(page);
+  await expect(page.locator(".mobileDecisionBar.live")).toBeVisible();
+  await expectNoA11yViolations(page);
+});
+
+test("@a11y não apresenta violações WCAG A/AA no histórico", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Histórico" }).click();
+  await expect(page.getByRole("heading", { name: "Cada mão deixa uma lição." })).toBeVisible();
+  await expectNoA11yViolations(page);
+});
+
+test("@a11y não apresenta violações WCAG A/AA no perfil", async ({ page }) => {
+  await openSeededHand(page);
+  await page.getByRole("button", { name: "Perfil" }).click();
+  await expect(page.getByRole("heading", { name: "Disciplina também é uma vantagem." })).toBeVisible();
+  await page.locator(".opponentRow summary").first().click();
+  await expect(page.getByLabel(/Estatísticas automáticas/).first()).toBeVisible();
+  await expectNoA11yViolations(page);
+});
+
+test("mostra range visual e alterna a posição estudada", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Aprender" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Veja como a posição muda seu range." }),
+  ).toBeVisible();
+  const rangePositions = page.getByLabel("Posição do range");
+  await expect(rangePositions.getByRole("button", { name: "BTN" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await rangePositions.getByRole("button", { name: "UTG" }).click();
+  await expect(rangePositions.getByRole("button", { name: "UTG" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("img", { name: /para UTG/ })).toBeVisible();
 });
