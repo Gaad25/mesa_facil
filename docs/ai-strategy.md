@@ -38,6 +38,27 @@ mas não é um equilíbrio de Nash calculado por um solver. Uma evolução futur
 poderá importar um blueprint CFR próprio, versionado e validado para os formatos
 multiplayer suportados pelo app.
 
+## Precisão e incerteza da estimativa
+
+A equidade vem de amostragem Monte Carlo, então ela carrega erro. A semente é
+derivada do próprio spot — cartas, adversários, perfis e pressão — de modo que
+a mesma situação devolve sempre o mesmo número: sem isso, cada novo render
+sorteava outros valores e a recomendação podia virar sozinha na tela.
+
+O erro restante é tratado explicitamente. A faixa marginal vale
+1,96 × √(0,25/n) pontos percentuais, a meia-largura do intervalo de 95%:
+
+| simulações | faixa marginal | onde é usado |
+| --- | --- | --- |
+| 260 | ±6,1 pontos | professor do treino |
+| 850 | ±3,4 pontos | queda para o main thread |
+| 2500 | ±2,0 pontos | mesa ao vivo, em Web Worker |
+
+Quando a diferença entre equidade e preço cabe nessa faixa, a decisão é
+apresentada como marginal em vez de aparentar uma certeza que os números não
+sustentam, e um raise de valor fino deixa de ser recomendado — aumentar o pote
+ali seria apostar numa vantagem que a estimativa não consegue confirmar.
+
 ## Portabilidade do progresso
 
 O arquivo JSON exportado contém o progresso e os replays locais. Para respeitar

@@ -1368,8 +1368,10 @@ button.playingCard:hover {
   transform: translateY(-2px);
 }
 
+/* accent-600 sobre o fundo da carta rende 4,1:1 e reprova no WCAG AA;
+   accent-700 rende 6,2:1 mantendo a leitura de naipe vermelho. */
 .playingCard.red {
-  color: var(--color-accent-600);
+  color: var(--color-accent-700);
 }
 
 .playingCard.small {
@@ -1875,6 +1877,53 @@ button.playingCard:hover {
   font-size: 29px;
   letter-spacing: -0.015em;
   line-height: 1.08;
+}
+
+/* Enquanto a simulação roda, os números na tela ainda são do spot anterior.
+   Esmaecê-los evita apresentar dados vencidos como se fossem os atuais. */
+.adviceCard.recalculating .metricGrid,
+.adviceCard.recalculating .equityTrack,
+.adviceCard.recalculating .equityLegend,
+.adviceCard.recalculating .adviceReason,
+.adviceCard.recalculating .marginalBadge {
+  opacity: 0.42;
+}
+
+.adviceCard .metricGrid,
+.adviceCard .equityTrack,
+.adviceCard .equityLegend,
+.adviceCard .adviceReason,
+.adviceCard .marginalBadge {
+  transition: opacity 160ms ease;
+}
+
+.recalculatingPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .miniSpinner {
+    animation: none;
+  }
+}
+
+/* Marca os spots em que a diferença entre equidade e preço cabe dentro do erro
+   da estimativa. Sem esse aviso a recomendação aparenta uma certeza que os
+   números não sustentam. */
+.marginalBadge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  padding: 9px 12px;
+  border: 1px dashed color-mix(in srgb, var(--color-accent-700) 42%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-accent-700);
+  background: color-mix(in srgb, var(--color-accent-700) 6%, transparent);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .adviceReason {

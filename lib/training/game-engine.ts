@@ -1,4 +1,9 @@
-import { evaluateBestHand, type OpponentStyle } from "../poker";
+import {
+  describeHand,
+  evaluateBestHand,
+  type Card,
+  type OpponentStyle,
+} from "../poker";
 import { createShuffledDeck } from "./deck";
 import { createSessionSeed, hashSeed } from "./random";
 import type {
@@ -12,6 +17,7 @@ import type {
   TrainingPotResult,
   TrainingReplayEvent,
   TrainingReplayFrame,
+  TrainingShowdownHand,
   TrainingStreet,
 } from "./types";
 
@@ -561,6 +567,33 @@ function awardPots(
   return { players, results };
 }
 
+/**
+ * Monta a explicação do showdown: qual combinação cada jogador revelou e qual
+ * delas levou o pote. Ordena da mão mais forte para a mais fraca, que é a
+ * ordem em que o jogador precisa lê-las para entender o resultado.
+ */
+function describeShowdown(
+  players: readonly TrainingPlayer[],
+  board: readonly Card[],
+  winnerIds: readonly string[],
+): TrainingShowdownHand[] {
+  return players
+    .filter((player) => !player.folded && player.holeCards.length === 2)
+    .map((player) => {
+      const evaluation = evaluateBestHand([...player.holeCards, ...board]);
+      return {
+        playerId: player.id,
+        name: evaluation.name,
+        description: describeHand(evaluation),
+        cards: evaluation.cards,
+        won: winnerIds.includes(player.id),
+        score: evaluation.score,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map(({ score: _score, ...hand }) => hand);
+}
+
 function completeByFold(state: TrainingGameState): TrainingGameState {
   const normalized = refundUncalledBet(state);
   const winner = contenders(normalized.players)[0];
@@ -585,6 +618,9 @@ function completeByFold(state: TrainingGameState): TrainingGameState {
     summary: winner.isHero
       ? "Você levou o pote depois que os adversários desistiram."
       : `${winner.name} levou o pote depois que os demais desistiram.`,
+    // Sem showdown as cartas não decidiram nada: o pote foi ganho pelos folds.
+    showdown: [],
+    winningHand: null,
   };
   return appendReplayFrame({
     ...normalized,
@@ -605,6 +641,10 @@ function completeShowdown(state: TrainingGameState): TrainingGameState {
   const winnerNames = winnerIds.map(
     (id) => players.find((player) => player.id === id)?.name ?? "Jogador",
   );
+  const showdown = describeShowdown(players, normalized.board, winnerIds);
+  const winningHand =
+    showdown.find((hand) => hand.won)?.description ?? null;
+  const withHand = winningHand ? ` com ${winningHand}` : "";
   const result: TrainingHandResult = {
     totalPot: normalized.pot,
     winnerIds,
@@ -612,8 +652,10 @@ function completeShowdown(state: TrainingGameState): TrainingGameState {
     heroNet: hero.stack - hero.handStartStack,
     summary:
       winnerNames.length === 1
-        ? `${winnerNames[0]} venceu no showdown.`
-        : `Pote dividido entre ${winnerNames.join(" e ")}.`,
+        ? `${winnerNames[0]} venceu no showdown${withHand}.`
+        : `Pote dividido entre ${winnerNames.join(" e ")}${withHand}.`,
+    showdown,
+    winningHand,
   };
   return appendReplayFrame({
     ...normalized,
@@ -794,11 +836,22 @@ export function restoreTrainingGameState(
           : [],
       )
     : [];
+  // Sessões salvas antes da explicação de showdown não têm estes campos.
+  const result: TrainingHandResult | null = state.result
+    ? {
+        ...state.result,
+        showdown: Array.isArray(state.result.showdown)
+          ? state.result.showdown
+          : [],
+        winningHand: state.result.winningHand ?? null,
+      }
+    : state.result;
   const normalized = {
     ...state,
     config,
     players,
     replay,
+    result,
     blindLevel:
       typeof state.blindLevel === "number"
         ? state.blindLevel

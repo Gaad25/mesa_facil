@@ -104,12 +104,27 @@ export interface TrainingPotResult {
   winnerIds: string[];
 }
 
+/** Mão revelada no showdown, com a combinação que efetivamente valeu. */
+export interface TrainingShowdownHand {
+  playerId: string;
+  name: string;
+  /** Descrição detalhada: "Flush de espadas, ás alto". */
+  description: string;
+  /** As cinco cartas que formaram a mão, entre as sete disponíveis. */
+  cards: Card[];
+  won: boolean;
+}
+
 export interface TrainingHandResult {
   totalPot: number;
   winnerIds: string[];
   pots: TrainingPotResult[];
   heroNet: number;
   summary: string;
+  /** Vazio quando a mão terminou por desistência, sem cartas reveladas. */
+  showdown: TrainingShowdownHand[];
+  /** Combinação vencedora, quando houve showdown. */
+  winningHand: string | null;
 }
 
 export type TrainingReplayEvent = "deal" | "action" | "street" | "result";

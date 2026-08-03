@@ -415,3 +415,67 @@ test("devolve a parte não coberta antes de encerrar a mão por fold", () => {
     2_000,
   );
 });
+
+test("explica a combinação vencedora ao chegar no showdown", () => {
+  const game = passiveShowdown();
+  const result = game.result!;
+
+  assert.ok(result.showdown.length >= 2, "showdown deveria revelar as mãos");
+  assert.equal(result.winningHand, result.showdown[0].description);
+  assert.equal(result.showdown[0].won, true);
+  assert.ok(
+    result.summary.includes(result.winningHand!),
+    `resumo "${result.summary}" deveria citar a mão vencedora`,
+  );
+
+  for (const hand of result.showdown) {
+    assert.equal(hand.cards.length, 5);
+    assert.ok(hand.description.length > 0);
+    const player = game.players.find((entry) => entry.id === hand.playerId);
+    assert.ok(player && !player.folded, "só mãos não desistidas são reveladas");
+  }
+
+  // Vencedores são exatamente quem a distribuição do pote premiou.
+  assert.deepEqual(
+    result.showdown.filter((hand) => hand.won).map((hand) => hand.playerId).sort(),
+    [...result.winnerIds].sort(),
+  );
+});
+
+test("mão ganha por desistência não inventa combinação vencedora", () => {
+  let game = createTrainingGame({
+    opponentCount: 2,
+    startingStack: 1_000,
+    smallBlind: 5,
+    bigBlind: 10,
+    seed: 7,
+  });
+
+  for (let action = 0; action < 40 && game.status === "playing"; action += 1) {
+    const legal = getTrainingLegalActions(game);
+    assert.ok(legal);
+    game = applyTrainingAction(
+      game,
+      legal.canFold ? { type: "fold" } : { type: "check" },
+    );
+  }
+
+  assert.deepEqual(game.result?.showdown, []);
+  assert.equal(game.result?.winningHand, null);
+});
+
+test("sessão salva antes do showdown detalhado continua carregando", () => {
+  const finished = passiveShowdown();
+  const legacyResult = { ...finished.result! } as Record<string, unknown>;
+  delete legacyResult.showdown;
+  delete legacyResult.winningHand;
+
+  const restored = restoreTrainingGameState(
+    JSON.parse(
+      JSON.stringify({ ...finished, result: legacyResult }),
+    ) as TrainingGameState,
+  );
+
+  assert.deepEqual(restored.result?.showdown, []);
+  assert.equal(restored.result?.winningHand, null);
+});

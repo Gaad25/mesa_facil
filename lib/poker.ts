@@ -6,6 +6,8 @@
  * responsivo em celulares.
  */
 
+import { hashSeed, seededRandom } from "./random";
+
 export type Suit = "clubs" | "diamonds" | "hearts" | "spades";
 
 export type Rank =
@@ -81,8 +83,8 @@ export interface EquityOptions {
   preflopPressure?: PreflopPressure | number;
   simulations?: number;
   /**
-   * Permite um gerador semeado em testes. No app, Math.random é suficiente
-   * porque os resultados são apenas estimativas estratégicas.
+   * Permite um gerador próprio. Quando omitido, a semente é derivada do
+   * próprio spot para que a mesma situação devolva sempre a mesma estimativa.
    */
   random?: () => number;
 }
@@ -146,6 +148,13 @@ export interface PokerAnalysis {
   texture: BoardTextureAnalysis;
   rangeLabel: string;
   confidence: "LOW" | "MEDIUM" | "HIGH";
+  /** Equidade menos pot odds, em pontos percentuais. Negativo = preço ruim. */
+  margin: number;
+  /**
+   * A diferença entre equidade e preço cabe dentro do erro da estimativa:
+   * pagar e desistir valem praticamente o mesmo.
+   */
+  marginal: boolean;
   reason: string;
   teachingPoint: string;
 }
@@ -206,6 +215,32 @@ const CATEGORY_RANK: Record<HandCategory, number> = {
   four_of_a_kind: 7,
   straight_flush: 8,
 };
+
+/** Simulações padrão quando o chamador não pede um número específico. */
+function defaultSimulations(opponents: number): number {
+  return opponents <= 2 ? 850 : opponents <= 5 ? 600 : 420;
+}
+
+function resolveSimulations(
+  opponents: number,
+  requested: number | undefined,
+): number {
+  return Math.round(
+    clamp(requested ?? defaultSimulations(opponents), 100, 2500),
+  );
+}
+
+/**
+ * Meia-largura do intervalo de 95% da estimativa Monte Carlo, em pontos
+ * percentuais: 1,96 × √(0,25/n) × 100. Dentro desta faixa a diferença entre
+ * equidade e preço não sustenta uma escolha categórica, então a decisão é
+ * apresentada como marginal em vez de aparentar uma certeza que os números
+ * não têm. Mais simulações estreitam a faixa: ~3,4 pontos com 850, ~2,0 com
+ * 2500.
+ */
+function marginalBandFor(simulations: number): number {
+  return round(98 / Math.sqrt(simulations), 1);
+}
 
 interface FiveCardEvaluation {
   category: HandCategory;
@@ -415,6 +450,80 @@ export function evaluateBestHand(cards: readonly Card[]): HandEvaluation {
   };
 }
 
+const RANK_LABEL: Record<Rank, string> = {
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+  "10": "10",
+  J: "valete",
+  Q: "dama",
+  K: "rei",
+  A: "ás",
+};
+
+const RANK_PLURAL_LABEL: Record<Rank, string> = {
+  ...RANK_LABEL,
+  J: "valetes",
+  Q: "damas",
+  K: "reis",
+  A: "ases",
+};
+
+const SUIT_LABEL: Record<Suit, string> = {
+  clubs: "paus",
+  diamonds: "ouros",
+  hearts: "copas",
+  spades: "espadas",
+};
+
+const RANK_BY_VALUE = new Map<number, Rank>(
+  RANKS.map((rank) => [RANK_VALUE[rank], rank]),
+);
+
+/**
+ * Descreve a mão em português com o detalhe que decide o showdown: qual carta
+ * fecha a sequência, quais pares foram formados, qual naipe fez o flush. É o
+ * texto que explica ao jogador por que aquela mão ganhou.
+ */
+export function describeHand(evaluation: HandEvaluation): string {
+  const [first, second] = evaluation.tiebreakers;
+  const rankOf = (value: number): Rank => RANK_BY_VALUE.get(value) ?? "2";
+  const one = (value: number) => RANK_LABEL[rankOf(value)];
+  const many = (value: number) => RANK_PLURAL_LABEL[rankOf(value)];
+  const suit = SUIT_LABEL[evaluation.cards[0].suit];
+  /** "dama" é a única carta feminina; as demais pedem artigo masculino. */
+  const upTo = (value: number) =>
+    rankOf(value) === "Q" ? `até a ${one(value)}` : `até o ${one(value)}`;
+
+  switch (evaluation.category) {
+    case "straight_flush":
+      return first === 14
+        ? `Royal flush de ${suit}`
+        : `Straight flush de ${suit} ${upTo(first)}`;
+    case "four_of_a_kind":
+      return `Quadra de ${many(first)}`;
+    case "full_house":
+      return `Full house de ${many(first)} com ${many(second)}`;
+    case "flush":
+      return `Flush de ${suit}, ${one(first)} alto`;
+    case "straight":
+      return `Sequência ${upTo(first)}`;
+    case "three_of_a_kind":
+      return `Trinca de ${many(first)}`;
+    case "two_pair":
+      return `Dois pares: ${many(first)} e ${many(second)}`;
+    case "pair":
+      return `Par de ${many(first)}`;
+    default:
+      return `Carta alta ${one(first)}`;
+  }
+}
+
 function createDeck(excluded: readonly Card[] = []): Card[] {
   const excludedKeys = new Set(excluded.map(cardKey));
   const deck: Card[] = [];
@@ -552,6 +661,35 @@ function takeRangedHand(
 }
 
 /**
+ * Semente derivada apenas do que altera a equidade — cartas, número e perfil
+ * dos adversários, pressão e quantidade de simulações. Pote e valor a pagar
+ * ficam de fora de propósito: eles mudam o preço da decisão, não a equidade.
+ *
+ * Sem isso, cada render sorteia números diferentes e a mesma situação recebe
+ * recomendações diferentes; com margens estreitas, a orientação virava de
+ * "pague" para "desista" sem que nada tivesse mudado na mesa.
+ */
+function equitySeed(
+  holeCards: readonly Card[],
+  board: readonly Card[],
+  opponents: number,
+  options: EquityOptions,
+  simulations: number,
+): number {
+  const styles = options.opponentStyles?.length
+    ? [...options.opponentStyles].sort().join(",")
+    : (options.opponentStyle ?? "balanced");
+  return hashSeed(
+    [...holeCards].map(cardKey).sort().join("|"),
+    [...board].map(cardKey).sort().join("|"),
+    opponents,
+    styles,
+    String(options.preflopPressure ?? "none"),
+    simulations,
+  );
+}
+
+/**
  * Estima a parte do pote pertencente ao herói por Monte Carlo. Empates são
  * divididos, portanto 50 significa metade do pote esperado, não apenas a
  * frequência de vitórias.
@@ -568,12 +706,12 @@ export function calculateEquity(
       ? { opponents: optionsOrOpponents }
       : optionsOrOpponents;
   const opponents = Math.round(clamp(options.opponents ?? 1, 1, 8));
-  const defaultSimulations =
-    opponents <= 2 ? 850 : opponents <= 5 ? 600 : 420;
-  const simulations = Math.round(
-    clamp(options.simulations ?? defaultSimulations, 100, 2500),
-  );
-  const random = options.random ?? Math.random;
+  const simulations = resolveSimulations(opponents, options.simulations);
+  const random =
+    options.random ??
+    seededRandom(
+      equitySeed(holeCards, board, opponents, options, simulations),
+    );
   const cardsNeededOnBoard = 5 - board.length;
   const knownCards = [...holeCards, ...board];
   let accumulatedShare = 0;
@@ -915,6 +1053,11 @@ function confidenceFromMargin(
   return "LOW";
 }
 
+/** Em pt-BR o separador decimal é a vírgula: "16,5%" e não "16.5%", que seria lido como milhar. */
+function pt(value: number): string {
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+}
+
 function emotionalSuffix(state: EmotionalState): string {
   if (state === "tilted") {
     return " Como você marcou tilt, a margem de segurança foi aumentada.";
@@ -945,12 +1088,13 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
   const canRaise = context.canRaise ?? true;
   const emotionalState = effectiveEmotionalState(context);
   const texture = analyzeBoardTexture(board, context.holeCards);
+  const simulations = resolveSimulations(opponents, context.simulations);
   const equity = calculateEquity(context.holeCards, board, {
     opponents,
     opponentStyle: context.opponentStyle,
     opponentStyles: context.opponentStyles,
     preflopPressure: context.preflopPressure,
-    simulations: context.simulations,
+    simulations,
     random: context.random,
   });
   const potOdds = calculatePotOdds(pot, callAmount);
@@ -964,6 +1108,9 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
   const rangeLabel = opponentRangeLabel(context);
   const safetyMargin =
     emotionalState === "tilted" ? 10 : emotionalState === "tired" ? 5 : 1.5;
+  const margin = round(equity - potOdds, 1);
+  const marginalBand = marginalBandFor(simulations);
+  const nearBreakeven = callAmount > 0 && Math.abs(margin) <= marginalBand;
 
   let action: PokerAction;
   let amount = 0;
@@ -1048,6 +1195,9 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
     const aggressiveEnough =
       monster ||
       (strongValue &&
+        // Um raise de valor fino dentro da faixa de erro aumenta o pote
+        // apostando numa vantagem que a estimativa não consegue confirmar.
+        !nearBreakeven &&
         emotionalState !== "tilted" &&
         (emotionalState !== "tired" || equityFraction >= 0.72));
     const profitableCall =
@@ -1073,7 +1223,7 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
       }
     } else if (!profitableCall) {
       action = "FOLD";
-      reason = `Sua equidade estimada de ${equity}% não oferece margem segura sobre os ${potOdds}% exigidos pelo pote.`;
+      reason = `Sua equidade estimada de ${pt(equity)}% não oferece margem segura sobre os ${pt(potOdds)}% exigidos pelo pote.`;
       teachingPoint =
         "Um call só se sustenta quando a chance de ganhar compensa o preço e a incerteza do range adversário.";
     } else if (canRaise && aggressiveEnough) {
@@ -1091,21 +1241,35 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
     } else {
       amount = callAmount;
       action = callAmount >= stack ? "ALL_IN" : "CALL";
-      reason = `A equidade estimada de ${equity}% supera os ${potOdds}% exigidos pelo pote.`;
+      reason = `A equidade estimada de ${pt(equity)}% supera os ${pt(potOdds)}% exigidos pelo pote.`;
       teachingPoint =
         outs > 0
-          ? `Você tem aproximadamente ${outs} outs de melhora; evite contar o mesmo out duas vezes.`
+          ? `Você tem aproximadamente ${pt(outs)} outs de melhora; evite contar o mesmo out duas vezes.`
           : "Compare sempre equidade e pot odds antes de pagar uma aposta.";
     }
   }
 
+  /**
+   * Só pagar e desistir são decididos comparando equidade com preço. Um raise
+   * ou um check vêm da força da mão e da iniciativa, então rotulá-los de
+   * marginal por causa do preço confundiria mais do que ajudaria.
+   */
+  const marginal =
+    nearBreakeven &&
+    (action === "FOLD" ||
+      action === "CALL" ||
+      (action === "ALL_IN" && amount <= callAmount));
+
+  if (marginal) {
+    reason += ` A diferença de ${pt(Math.abs(margin))} ponto${
+      Math.abs(margin) === 1 ? "" : "s"
+    } entre equidade e preço cabe dentro da margem de erro da estimativa, então esta é uma decisão marginal.`;
+    teachingPoint =
+      "Perto do ponto de equilíbrio, as duas linhas custam quase o mesmo no longo prazo. Decida pelo que você sabe do adversário, não pela porcentagem.";
+  }
+
   reason += emotionalSuffix(emotionalState);
-  const confidence = confidenceFromMargin(
-    equity,
-    potOdds,
-    action,
-    context.simulations,
-  );
+  const confidence = confidenceFromMargin(equity, potOdds, action, simulations);
 
   return {
     action,
@@ -1117,7 +1281,9 @@ export function analyzeSpot(context: BettingContext): PokerAnalysis {
     handName,
     texture,
     rangeLabel,
-    confidence,
+    confidence: marginal ? "LOW" : confidence,
+    margin,
+    marginal,
     reason,
     teachingPoint,
   };

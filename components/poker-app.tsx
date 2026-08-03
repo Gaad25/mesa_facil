@@ -27,6 +27,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Scale,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -69,9 +70,8 @@ import {
   type Session,
   type TableAction,
 } from "@/lib/app-state";
+import type { SpotInput } from "@/lib/analysis-protocol";
 import {
-  analyzeSpot,
-  type BettingContext,
   type Card,
   type EmotionalState,
   type OpponentStyle,
@@ -81,6 +81,7 @@ import {
   type Suit,
   type TablePosition,
 } from "@/lib/poker";
+import { useSpotAnalysis } from "@/lib/use-spot-analysis";
 import {
   adaptiveTrainingQuestions,
   recommendedTrainingFocus,
@@ -885,13 +886,13 @@ function SimpleMode({
   const [amountToPlay, setAmountToPlay] = useState(0);
   const [cardTarget, setCardTarget] = useState<CardTarget>(null);
 
-  const analysis = useMemo(() => {
+  const spot = useMemo<SpotInput | null>(() => {
     if (heroCards.length !== 2 || ![0, 3, 4, 5].includes(board.length)) {
       return null;
     }
 
     const safeAmount = Math.max(0, amountToPlay);
-    return analyzeSpot({
+    return {
       holeCards: heroCards,
       board,
       pot: safeAmount * 4,
@@ -903,8 +904,10 @@ function SimpleMode({
       preflopPressure: safeAmount > 0 ? "raised" : "none",
       emotionalState: "calm",
       bigBlind: Math.max(1, safeAmount),
-    });
+    };
   }, [amountToPlay, board, heroCards]);
+
+  const { analysis, pending: analysisPending } = useSpotAnalysis(spot);
 
   const usedCards = useMemo(
     () => new Set([...heroCards, ...board].map(cardKey)),
@@ -1072,6 +1075,7 @@ function SimpleMode({
             complete={
               heroCards.length === 2 && [0, 3, 4, 5].includes(board.length)
             }
+            recalculating={analysisPending}
             onEnable={onEnableCopilot}
           />
           {!analysis && (
@@ -1378,11 +1382,14 @@ function AdviceCard({
   enabled,
   analysis,
   complete,
+  recalculating = false,
   onEnable,
 }: {
   enabled: boolean;
   analysis: PokerAnalysis | null;
   complete: boolean;
+  /** Há uma simulação em andamento; os números visíveis são do spot anterior. */
+  recalculating?: boolean;
   onEnable: () => void;
 }) {
   if (!enabled) {
@@ -1406,15 +1413,27 @@ function AdviceCard({
   }
 
   if (!complete || !analysis) {
+    // A primeira análise de um spot completo ainda está rodando no worker.
+    const computing = complete && recalculating;
     return (
       <section className="adviceCard waiting">
         <div className="adviceIcon">
-          <Sparkles size={21} />
+          {computing ? <span className="miniSpinner" /> : <Sparkles size={21} />}
         </div>
         <div>
-          <span className="eyebrow">Copilot pronto</span>
-          <h2>Adicione suas duas cartas.</h2>
-          <p>A recomendação aparece assim que a situação estiver completa.</p>
+          <span className="eyebrow">
+            {computing ? "Calculando" : "Copilot pronto"}
+          </span>
+          <h2>
+            {computing
+              ? "Analisando a situação."
+              : "Adicione suas duas cartas."}
+          </h2>
+          <p>
+            {computing
+              ? "A simulação roda fora da interface para não travar o aplicativo."
+              : "A recomendação aparece assim que a situação estiver completa."}
+          </p>
         </div>
       </section>
     );
@@ -1430,17 +1449,28 @@ function AdviceCard({
     analysis.equity >= analysis.potOdds ? "good" : ("warning" as const);
 
   return (
-    <section className={`adviceCard live action-${analysis.action.toLowerCase()}`}>
+    <section
+      className={`adviceCard live action-${analysis.action.toLowerCase()} ${
+        recalculating ? "recalculating" : ""
+      }`}
+    >
       <div className="adviceTop">
         <span className="eyebrow">
           <Sparkles size={16} />
           Melhor decisão agora
         </span>
-        <span className="confidencePill">
-          Confiança{" "}
-          {CONFIDENCE_LABELS[String(analysis.confidence).toLowerCase()] ??
-            analysis.confidence}
-        </span>
+        {recalculating ? (
+          <span className="confidencePill recalculatingPill">
+            <span className="miniSpinner" />
+            Recalculando
+          </span>
+        ) : (
+          <span className="confidencePill">
+            Confiança{" "}
+            {CONFIDENCE_LABELS[String(analysis.confidence).toLowerCase()] ??
+              analysis.confidence}
+          </span>
+        )}
       </div>
       <div className="adviceDecision">
         <div className="adviceIcon">
@@ -1460,6 +1490,16 @@ function AdviceCard({
           </h2>
         </div>
       </div>
+      {analysis.marginal && (
+        <p className="marginalBadge">
+          <Scale size={14} aria-hidden="true" />
+          Decisão marginal ·{" "}
+          {Math.abs(analysis.margin).toLocaleString("pt-BR", {
+            maximumFractionDigits: 1,
+          })}{" "}
+          ponto{Math.abs(analysis.margin) === 1 ? "" : "s"} de diferença
+        </p>
+      )}
       <p className="adviceReason">{analysis.reason}</p>
       <div className="metricGrid">
         <Metric
@@ -1595,14 +1635,19 @@ function LiveTable({
       : hero.stack,
   );
 
-  const analysis = useMemo(() => {
+  const dominantStyle = useMemo(
+    () => getDominantOpponentStyle(session),
+    [session],
+  );
+
+  const spot = useMemo<SpotInput | null>(() => {
     if (
       heroCards.length !== 2 ||
       ![0, 3, 4, 5].includes(board.length)
     ) {
       return null;
     }
-    const context: BettingContext = {
+    return {
       holeCards: heroCards,
       board,
       pot,
@@ -1612,22 +1657,24 @@ function LiveTable({
       position: enginePosition(heroPosition),
       preflopPressure: enginePressure(pressure),
       emotionalState: engineMood(data.mood),
-      opponentStyle: getDominantOpponentStyle(session),
+      opponentStyle: dominantStyle,
       bigBlind: session.bigBlind,
     };
-    return analyzeSpot(context);
   }, [
     board,
     data.mood,
+    dominantStyle,
     effectiveStack,
     heroCards,
     heroPosition,
     opponents,
     pot,
     pressure,
-    session,
+    session.bigBlind,
     toCall,
   ]);
+
+  const { analysis, pending: analysisPending } = useSpotAnalysis(spot);
 
   const usedCards = useMemo(
     () => new Set([...heroCards, ...board].map(cardKey)),
@@ -2259,6 +2306,7 @@ function LiveTable({
           complete={
             heroCards.length === 2 && [0, 3, 4, 5].includes(board.length)
           }
+          recalculating={analysisPending}
           onEnable={() =>
             updateData((current) => ({
               ...current,

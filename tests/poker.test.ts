@@ -6,6 +6,7 @@ import {
   analyzeSpot,
   calculateEquity,
   calculatePotOdds,
+  describeHand,
   evaluateBestHand,
   type Card,
   type Rank,
@@ -367,4 +368,211 @@ test("não recomenda check pré-flop quando ainda é preciso completar o big bli
     random: seededRandom(92),
   });
   assert.notEqual(weak.action, "CHECK");
+});
+
+test("a mesma situação devolve sempre a mesma recomendação", () => {
+  const spot = {
+    holeCards: [card("9", "spades"), card("8", "spades")],
+    board: [card("K", "hearts"), card("7", "spades"), card("2", "diamonds")],
+    pot: 100,
+    callAmount: 22,
+    bigBlind: 10,
+    effectiveStack: 400,
+    opponents: 2,
+  };
+
+  const first = analyzeSpot(spot);
+  for (let repeat = 0; repeat < 15; repeat += 1) {
+    const again = analyzeSpot(spot);
+    assert.equal(again.equity, first.equity);
+    assert.equal(again.action, first.action);
+  }
+
+  // A ordem em que o jogador digitou as cartas não pode mudar a estimativa.
+  const swapped = analyzeSpot({
+    ...spot,
+    holeCards: [card("8", "spades"), card("9", "spades")],
+    board: [card("2", "diamonds"), card("K", "hearts"), card("7", "spades")],
+  });
+  assert.equal(swapped.equity, first.equity);
+
+  // O pote altera o preço da decisão, nunca a equidade da mão.
+  const biggerPot = analyzeSpot({ ...spot, pot: 101 });
+  assert.equal(biggerPot.equity, first.equity);
+});
+
+test("marca como marginal quando equidade e preço ficam dentro do erro", () => {
+  const marginal = analyzeSpot({
+    holeCards: [card("9", "spades"), card("8", "spades")],
+    board: [card("K", "hearts"), card("7", "spades"), card("2", "diamonds")],
+    pot: 100,
+    callAmount: 22,
+    bigBlind: 10,
+    effectiveStack: 400,
+    opponents: 2,
+  });
+  assert.equal(marginal.marginal, true);
+  assert.ok(Math.abs(marginal.margin) <= 3, `margem ${marginal.margin}`);
+  assert.equal(marginal.confidence, "LOW");
+  assert.match(marginal.reason, /marginal/);
+
+  const clear = analyzeSpot({
+    holeCards: [card("A", "spades"), card("A", "hearts")],
+    board: [card("A", "clubs"), card("7", "spades"), card("2", "diamonds")],
+    pot: 100,
+    callAmount: 20,
+    bigBlind: 10,
+    effectiveStack: 400,
+    opponents: 1,
+  });
+  assert.equal(clear.marginal, false);
+  assert.ok(clear.margin > 3, `margem ${clear.margin}`);
+});
+
+test("não aumenta por valor fino dentro da faixa marginal", () => {
+  const spot = {
+    holeCards: [card("A", "hearts"), card("Q", "clubs")],
+    board: [card("A", "spades"), card("K", "diamonds"), card("9", "hearts")],
+    bigBlind: 10,
+    effectiveStack: 400,
+    opponents: 3,
+  };
+
+  const thin = analyzeSpot({ ...spot, pot: 100, callAmount: 62 });
+  if (thin.marginal) {
+    assert.ok(
+      thin.action !== "RAISE" && thin.action !== "ALL_IN",
+      `esperava linha passiva num spot marginal, veio ${thin.action}`,
+    );
+  }
+});
+
+test("descreve a combinação que venceu o showdown", () => {
+  const cases: Array<[Card[], string]> = [
+    [
+      [
+        card("A", "spades"), card("K", "spades"), card("9", "spades"),
+        card("5", "spades"), card("2", "spades"),
+      ],
+      "Flush de espadas, ás alto",
+    ],
+    [
+      [
+        card("K", "hearts"), card("K", "diamonds"), card("7", "spades"),
+        card("7", "clubs"), card("A", "spades"),
+      ],
+      "Dois pares: reis e 7",
+    ],
+    [
+      [
+        card("Q", "hearts"), card("J", "diamonds"), card("10", "spades"),
+        card("9", "clubs"), card("8", "spades"),
+      ],
+      "Sequência até a dama",
+    ],
+    [
+      [
+        card("A", "hearts"), card("J", "diamonds"), card("8", "spades"),
+        card("5", "clubs"), card("2", "spades"),
+      ],
+      "Carta alta ás",
+    ],
+    [
+      [
+        card("A", "hearts"), card("A", "diamonds"), card("A", "spades"),
+        card("K", "clubs"), card("K", "spades"),
+      ],
+      "Full house de ases com reis",
+    ],
+    [
+      [
+        card("5", "hearts"), card("4", "hearts"), card("3", "hearts"),
+        card("2", "hearts"), card("A", "hearts"),
+      ],
+      "Straight flush de copas até o 5",
+    ],
+    [
+      [
+        card("A", "clubs"), card("K", "clubs"), card("Q", "clubs"),
+        card("J", "clubs"), card("10", "clubs"),
+      ],
+      "Royal flush de paus",
+    ],
+  ];
+
+  for (const [cards, expected] of cases) {
+    assert.equal(describeHand(evaluateBestHand(cards)), expected);
+  }
+});
+
+test("não rotula raise nem check como decisão marginal", () => {
+  // Pré-flop caro com mão de abertura: a linha vem da força da mão, não do
+  // preço, mesmo quando equidade e pot odds quase empatam.
+  const opening = analyzeSpot({
+    holeCards: [card("A", "spades"), card("K", "diamonds")],
+    board: [],
+    pot: 15,
+    callAmount: 14,
+    bigBlind: 10,
+    effectiveStack: 500,
+    opponents: 2,
+    position: "BTN",
+  });
+  assert.equal(opening.action, "RAISE");
+  assert.equal(opening.marginal, false);
+
+  // Sem aposta para pagar não existe preço a comparar.
+  const free = analyzeSpot({
+    holeCards: [card("9", "spades"), card("8", "spades")],
+    board: [card("K", "hearts"), card("7", "spades"), card("2", "diamonds")],
+    pot: 100,
+    callAmount: 0,
+    bigBlind: 10,
+    effectiveStack: 400,
+    opponents: 2,
+  });
+  assert.equal(free.marginal, false);
+  assert.equal(free.margin, free.equity);
+});
+
+test("mais simulações estreitam a faixa de decisão marginal", () => {
+  const ranks: Rank[] = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+  const suits: Suit[] = ["clubs", "diamonds", "hearts", "spades"];
+  const deck: Card[] = suits.flatMap((suit) =>
+    ranks.map((rank) => card(rank, suit)),
+  );
+
+  function marginalRate(simulations: number) {
+    let marginal = 0;
+    const total = 150;
+    for (let index = 1; index <= total; index += 1) {
+      const random = seededRandom(index * 7919);
+      const pool = [...deck];
+      const take = () => pool.splice(Math.floor(random() * pool.length), 1)[0];
+      const holeCards = [take(), take()];
+      const board = [take(), take(), take()];
+      const pot = 60 + Math.floor(random() * 120);
+      const analysis = analyzeSpot({
+        holeCards,
+        board,
+        pot,
+        callAmount: Math.max(1, Math.floor(pot * (0.2 + random() * 0.6))),
+        bigBlind: 10,
+        effectiveStack: 400,
+        opponents: 2,
+        simulations,
+      });
+      if (analysis.marginal) marginal += 1;
+    }
+    return marginal / total;
+  }
+
+  // A faixa vale 1,96 × √(0,25/n): quanto mais simulações, menos spots ficam
+  // dentro do erro da estimativa e menos decisões precisam do aviso.
+  const coarse = marginalRate(260);
+  const fine = marginalRate(2500);
+  assert.ok(
+    fine < coarse,
+    `com 2500 simulações a taxa marginal (${fine}) deveria cair abaixo da de 260 (${coarse})`,
+  );
 });

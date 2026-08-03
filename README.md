@@ -10,10 +10,17 @@ responsável.
 - registro rápido de cartas, pote, valor para pagar e ações da mesa;
 - recomendações com equidade estimada, pot odds, textura do board, ranges, SPR
   e tamanho sugerido;
+- a mesma situação sempre recebe a mesma recomendação, e spots em que equidade e
+  preço ficam dentro da margem de erro aparecem marcados como decisão marginal;
+- a simulação roda em Web Worker, fora da interface: são 2500 amostras sem
+  travar a digitação, com queda automática para o cálculo local quando o
+  navegador não oferece worker;
 - Copilot opcional, explicações simples e modo de treino;
 - mesa de treino offline contra 1 a 5 bots, perfis adversários personalizáveis,
   ritmo ajustável, professor guiado, revisão por street, histórico com replay,
   dashboard de evolução e exercícios adaptados aos pontos fracos;
+- resumo de fim de mão explicando qual combinação venceu o showdown, com as
+  cinco cartas de cada mão revelada;
 - bots com estratégias mistas, modo GTO aproximado e adaptação às tendências do
   jogador sem acesso a cartas escondidas;
 - cash game, Sit & Go, torneio regular e turbo com stacks, blinds, antes e

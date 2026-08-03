@@ -1202,6 +1202,9 @@ function HandSummary({
   const risky = handFeedback.filter((item) => item.grade === "risky").length;
   const hero = game.players.find((player) => player.isHero)!;
   const sessionEnded = game.status === "sessionComplete";
+  const showdown = game.result?.showdown ?? [];
+  const playerName = (id: string) =>
+    game.players.find((player) => player.id === id)?.name ?? "Jogador";
   return (
     <div className={styles.summaryBackdrop} role="presentation">
       <section className={styles.handSummary} role="dialog" aria-modal="true" aria-labelledby="hand-summary-title">
@@ -1220,13 +1223,56 @@ function HandSummary({
           <span><small>Boas decisões</small><strong>{good}</strong></span>
           <span><small>Arriscadas</small><strong>{risky}</strong></span>
         </div>
+        {showdown.length > 0 && (
+          <div className={styles.decisionReview}>
+            <div className={styles.reviewHeading}>
+              <span>Por que ganhou</span>
+              <small>Cartas reveladas</small>
+            </div>
+            {/* tabIndex permite rolar a lista pelo teclado quando ela transborda. */}
+            <div
+              className={styles.showdownList}
+              role="group"
+              aria-label="Mãos reveladas no showdown"
+              tabIndex={0}
+            >
+              {showdown.map((hand) => (
+                <div
+                  className={`${styles.showdownItem} ${hand.won ? styles.showdownWinner : ""}`}
+                  key={hand.playerId}
+                >
+                  <span className={styles.showdownPlayer}>
+                    <strong>
+                      {hand.won && <Trophy size={14} aria-label="Venceu" />}
+                      {playerName(hand.playerId)}
+                    </strong>
+                    <em className={styles.showdownHand}>{hand.description}</em>
+                  </span>
+                  <span className={styles.showdownCards}>
+                    {hand.cards.map((card) => (
+                      <TrainingCard
+                        key={`${card.rank}-${card.suit}`}
+                        card={card}
+                      />
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {handFeedback.length > 0 && (
           <div className={styles.decisionReview}>
             <div className={styles.reviewHeading}>
               <span>Revisão das decisões</span>
               <small>{trainingSolidRate(progress)}% sólidas no total</small>
             </div>
-            <div className={styles.reviewList}>
+            <div
+              className={styles.reviewList}
+              role="group"
+              aria-label="Revisão das suas decisões nesta mão"
+              tabIndex={0}
+            >
               {handFeedback.map((item) => (
                 <div className={styles.reviewItem} key={item.id}>
                   <span className={`${styles.reviewGrade} ${styles[item.grade ?? "acceptable"]}`}>

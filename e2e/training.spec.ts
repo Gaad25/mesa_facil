@@ -274,3 +274,74 @@ test("@a11y não apresenta violações WCAG A/AA na mesa ativa", async ({ page }
 
   expect(formatViolations(results.violations)).toEqual([]);
 });
+
+/**
+ * Joga mãos passivamente até uma delas chegar ao showdown. O embaralhamento de
+ * cada sessão é aleatório, então uma mão isolada pode terminar em fold — o
+ * teste insiste até encontrar a situação que quer verificar.
+ */
+async function reachShowdownSummary(page: Page) {
+  const advance = page.getByRole("button", { name: /Entendi, ver resumo/ });
+  const nextHand = page.getByRole("button", { name: /Próxima mão/ });
+
+  for (let hand = 0; hand < 12; hand += 1) {
+    for (let step = 0; step < 60; step += 1) {
+      if (await advance.isVisible().catch(() => false)) break;
+      const action = page.getByRole("button", { name: /^(Check|Call)\b/ }).first();
+      if (await action.isVisible().catch(() => false)) {
+        await action.click().catch(() => undefined);
+      } else {
+        await page.waitForTimeout(150);
+      }
+    }
+
+    await expect(advance).toBeVisible({ timeout: 15_000 });
+    await advance.click();
+    const summary = page.getByRole("dialog");
+    await expect(summary).toBeVisible();
+
+    if (await summary.getByText("Por que ganhou").isVisible().catch(() => false)) {
+      return summary;
+    }
+    await nextHand.click();
+    await expect(page.getByText("Sua decisão", { exact: true })).toBeVisible();
+  }
+
+  throw new Error("nenhuma das 12 mãos chegou ao showdown");
+}
+
+test("explica no resumo qual combinação venceu o showdown", async ({ page }) => {
+  await resetTraining(page);
+  await startHeadsUpTraining(page);
+  const summary = await reachShowdownSummary(page);
+
+  const title = await summary.getByRole("heading").first().textContent();
+  expect(title).toMatch(/venceu no showdown com |Pote dividido entre .* com /);
+
+  // A combinação citada no título reaparece detalhada na mão do vencedor.
+  const winningHand = title!.split(" com ").at(-1)!.replace(/\.$/, "");
+  await expect(
+    summary.getByText(winningHand, { exact: true }).first(),
+  ).toBeVisible();
+
+  // Cada mão revelada mostra as cinco cartas que a formaram.
+  const revealedHands = summary.locator("[class*='showdownItem']");
+  expect(await revealedHands.count()).toBeGreaterThanOrEqual(2);
+  for (let index = 0; index < (await revealedHands.count()); index += 1) {
+    await expect(
+      revealedHands.nth(index).getByRole("img", { name: / de / }),
+    ).toHaveCount(5);
+  }
+});
+
+test("@a11y não apresenta violações WCAG A/AA no resumo da mão", async ({ page }) => {
+  await resetTraining(page);
+  await startHeadsUpTraining(page);
+  await reachShowdownSummary(page);
+  await page.waitForTimeout(600);
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(formatViolations(results.violations)).toEqual([]);
+});
