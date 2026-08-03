@@ -220,6 +220,10 @@
   grid-column: 1 / -1;
 }
 
+.progressPreviewActions .historyButton:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
 .progressTransferActions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3234,7 +3238,8 @@
   }
 
   .pokerTable {
-    min-height: clamp(405px, 60dvh, 455px);
+    min-height: clamp(380px, 55dvh, 420px);
+    border-radius: 36%;
   }
 
   .playerSeat {
@@ -3265,6 +3270,51 @@
   .boardCards .card {
     width: 31px;
     height: 44px;
+  }
+
+  .tableCenter {
+    top: 46%;
+    gap: 5px;
+  }
+
+  .revealingTable .tableCenter {
+    top: 41%;
+  }
+
+  .revealingTable .heroSeat {
+    top: 86%;
+  }
+
+  .revealingTable .heroSeat .seatCards {
+    height: 51px;
+  }
+
+  .revealingTable .heroSeat .seatCards .card {
+    width: 36px;
+    height: 49px;
+  }
+
+  .revealingTable .heroSeat .seatCards .cardRank {
+    top: 5px;
+    left: 6px;
+    font-size: 14px;
+  }
+
+  .revealingTable .heroSeat .seatCards .cardSuit {
+    right: 5px;
+    bottom: 4px;
+    font-size: 21px;
+  }
+
+  .showdownBanner {
+    width: min(220px, 61vw);
+    gap: 2px;
+    padding: 8px 10px;
+  }
+
+  .showdownBanner > strong {
+    font-size: 12px;
+    line-height: 1.15;
   }
 
   .decisionDock {

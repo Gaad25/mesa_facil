@@ -14,6 +14,7 @@ import {
   Eye,
   EyeOff,
   Gauge,
+  Grid3X3,
   History,
   Lightbulb,
   LoaderCircle,
@@ -103,6 +104,7 @@ import type {
   TrainingProgress,
   TrainingStreet,
 } from "@/lib/training/types";
+import { StartingHandChartDialog } from "./starting-hand-chart";
 import styles from "./training-game.module.css";
 
 const STREET_LABELS = TRAINING_STREET_LABELS;
@@ -295,12 +297,14 @@ function TrainingSetup({
   onStart,
   onOpenHistory,
   onOpenProgress,
+  onOpenRanges,
   onImportProgress,
   progress,
 }: {
   onStart: (config: Omit<TrainingConfig, "seed">) => void;
   onOpenHistory: () => void;
   onOpenProgress: () => void;
+  onOpenRanges: () => void;
   onImportProgress: (progress: TrainingProgress) => void;
   progress: TrainingProgress;
 }) {
@@ -397,6 +401,13 @@ function TrainingSetup({
                 <Target size={16} /> Próximo foco recomendado: <strong>{focus.streetLabel}</strong>
               </div>
               <div className={styles.progressPreviewActions}>
+                <button
+                  type="button"
+                  className={styles.historyButton}
+                  onClick={onOpenRanges}
+                >
+                  <Grid3X3 size={16} /> Ver ranges
+                </button>
                 <button
                   type="button"
                   className={styles.historyButton}
@@ -1895,6 +1906,7 @@ function ActiveTraining({
   onNewSession,
   onOpenHistory,
   onOpenProgress,
+  onOpenRanges,
   overlayPending,
 }: {
   game: TrainingGameState;
@@ -1905,6 +1917,7 @@ function ActiveTraining({
   onNewSession: () => void;
   onOpenHistory: (handId?: string) => void;
   onOpenProgress: () => void;
+  onOpenRanges: () => void;
   overlayPending: boolean;
 }) {
   const [thinking, setThinking] = useState(false);
@@ -2021,6 +2034,9 @@ function ActiveTraining({
               <History size={16} /> Histórico
             </button>
           )}
+          <button type="button" onClick={onOpenRanges}>
+            <Grid3X3 size={16} /> Ranges
+          </button>
           <button type="button" onClick={onOpenProgress}>
             <BarChart3 size={16} /> Evolução
           </button>
@@ -2078,6 +2094,7 @@ export default function TrainingGame() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [historyRequest, setHistoryRequest] = useState<{ handId?: string } | null>(null);
   const [showProgress, setShowProgress] = useState(false);
+  const [showRanges, setShowRanges] = useState(false);
 
   useEffect(() => {
     const saved = loadTrainingSession();
@@ -2148,6 +2165,7 @@ export default function TrainingGame() {
           progress={progressWithCurrentHand}
           onOpenHistory={() => setHistoryRequest({})}
           onOpenProgress={() => setShowProgress(true)}
+          onOpenRanges={() => setShowRanges(true)}
           onImportProgress={(imported) => {
             setProgress(imported);
             saveTrainingProgress(imported);
@@ -2187,6 +2205,9 @@ export default function TrainingGame() {
             }}
           />
         )}
+        {showRanges && (
+          <StartingHandChartDialog onClose={() => setShowRanges(false)} />
+        )}
       </>
     );
   }
@@ -2202,7 +2223,8 @@ export default function TrainingGame() {
         onNewSession={() => setShowResetConfirm(true)}
         onOpenHistory={(handId) => setHistoryRequest({ handId })}
         onOpenProgress={() => setShowProgress(true)}
-        overlayPending={showResetConfirm || Boolean(historyRequest) || showProgress}
+        onOpenRanges={() => setShowRanges(true)}
+        overlayPending={showResetConfirm || Boolean(historyRequest) || showProgress || showRanges}
       />
       {showResetConfirm && (
         <ResetTrainingDialog
@@ -2222,6 +2244,9 @@ export default function TrainingGame() {
           progress={progressWithCurrentHand}
           onClose={() => setShowProgress(false)}
         />
+      )}
+      {showRanges && (
+        <StartingHandChartDialog onClose={() => setShowRanges(false)} />
       )}
     </>
   );

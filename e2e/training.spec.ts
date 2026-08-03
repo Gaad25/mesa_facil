@@ -41,6 +41,34 @@ test("oferece acesso direto ao jogo no menu principal", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("explora ranges pré-flop por posição e nível", async ({ page }) => {
+  await resetTraining(page);
+  await page.getByRole("button", { name: /Ver ranges/ }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Escolha melhor antes do flop." });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("group", { name: /Range de BTN/ }).getByRole("button")).toHaveCount(169);
+
+  await dialog.getByRole("button", { name: "UTG", exact: true }).click();
+  await dialog.getByRole("button", { name: "Completo", exact: true }).click();
+  await dialog.getByRole("button", { name: "A9s: Estratégia mista" }).click();
+  await expect(dialog.getByText("A9s em UTG")).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(formatViolations(results.violations)).toEqual([]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const matrixBox = await dialog.getByRole("group", { name: /Range de UTG/ }).boundingBox();
+  expect(matrixBox).not.toBeNull();
+  expect(matrixBox!.x).toBeGreaterThanOrEqual(0);
+  expect(matrixBox!.x + matrixBox!.width).toBeLessThanOrEqual(390);
+
+  await dialog.getByRole("button", { name: "Fechar mapa de mãos" }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test("permite apagar e redigitar campos numéricos pelo teclado", async ({ page }) => {
   await page.goto("/");
 

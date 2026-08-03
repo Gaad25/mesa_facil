@@ -230,5 +230,9 @@ test("mostra range visual e alterna a posição estudada", async ({ page }) => {
     "aria-pressed",
     "true",
   );
-  await expect(page.getByRole("img", { name: /para UTG/ })).toBeVisible();
+  const matrix = page.getByRole("group", { name: /para UTG/ });
+  await expect(matrix).toBeVisible();
+  await expect(matrix.getByRole("button")).toHaveCount(169);
+  await matrix.getByRole("button", { name: /^A9s:/ }).click();
+  await expect(page.getByText("A9s · UTG")).toBeVisible();
 });
