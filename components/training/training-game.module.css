@@ -2275,6 +2275,10 @@
   background: var(--color-neutral-200);
 }
 
+.streetProgressTrack i {
+  background: #9fc8df;
+}
+
 .errorCountTrack i {
   background: var(--color-accent-2-600);
 }
