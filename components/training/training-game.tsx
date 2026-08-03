@@ -11,6 +11,8 @@ import {
   CircleHelp,
   Coins,
   Download,
+  Eye,
+  EyeOff,
   Gauge,
   History,
   Lightbulb,
@@ -802,11 +804,13 @@ function seatPosition(player: TrainingPlayer, total: number) {
   const relativeSeat = (player.seat + total) % total;
   const angle = 90 + (relativeSeat * 360) / total;
   const radians = (angle * Math.PI) / 180;
+  const verticalRadius = player.isHero ? 35 : 38;
+  const mobileVerticalRadius = player.isHero ? 31 : 34;
   return {
     "--seat-x": `${50 + Math.cos(radians) * 38}%`,
-    "--seat-y": `${50 + Math.sin(radians) * 38}%`,
+    "--seat-y": `${50 + Math.sin(radians) * verticalRadius}%`,
     "--mobile-seat-x": `${50 + Math.cos(radians) * 36}%`,
-    "--mobile-seat-y": `${50 + Math.sin(radians) * 34}%`,
+    "--mobile-seat-y": `${50 + Math.sin(radians) * mobileVerticalRadius}%`,
   } as CSSProperties;
 }
 
@@ -818,8 +822,10 @@ function PlayerSeat({
   game: TrainingGameState;
 }) {
   const current = game.currentPlayerSeat === player.seat;
-  const showdown = game.status !== "playing" && game.street === "showdown";
-  const reveal = player.isHero || (showdown && !player.folded);
+  const handFinished = game.status !== "playing";
+  const reveal = player.isHero || handFinished;
+  const revealingOpponent = handFinished && !player.isHero;
+  const winner = handFinished && Boolean(game.result?.winnerIds.includes(player.id));
   const role =
     player.seat === game.dealerSeat
       ? "D"
@@ -832,7 +838,9 @@ function PlayerSeat({
     <div
       className={`${styles.playerSeat} ${player.isHero ? styles.heroSeat : ""} ${
         current ? styles.currentSeat : ""
-      } ${player.folded ? styles.foldedSeat : ""}`}
+      } ${player.folded ? styles.foldedSeat : ""} ${
+        revealingOpponent ? styles.revealedSeat : ""
+      } ${handFinished ? styles.finishedSeat : ""} ${winner ? styles.winnerSeat : ""}`}
       style={seatPosition(player, game.players.length)}
       data-training-seat={player.seat}
       aria-label={`${player.isHero ? "Você" : player.name}, ${formatChips(player.stack)} fichas${
@@ -842,11 +850,15 @@ function PlayerSeat({
       <div className={styles.seatCards}>
         {player.holeCards.map((card, index) => (
           <TrainingCard
-            key={`${game.handNumber}-${player.id}-${index}`}
+            key={`${game.handNumber}-${player.id}-${index}-${reveal ? "front" : "back"}`}
             card={reveal ? card : undefined}
             hidden={!reveal}
-            animation="deal"
-            animationDelay={player.seat * 35 + index * 90}
+            animation={revealingOpponent ? "reveal" : "deal"}
+            animationDelay={
+              revealingOpponent
+                ? 140 + player.seat * 130 + index * 90
+                : player.seat * 35 + index * 90
+            }
           />
         ))}
       </div>
@@ -862,7 +874,8 @@ function PlayerSeat({
       </div>
       {!player.isHero && <span className={styles.styleTag}>{STYLE_LABELS[player.style]}</span>}
       {player.folded && <span className={styles.stateTag}>Fold</span>}
-      {player.allIn && !player.folded && <span className={styles.stateTag}>All-in</span>}
+      {player.allIn && !player.folded && !winner && <span className={styles.stateTag}>All-in</span>}
+      {winner && <span className={styles.winnerTag}>Vencedor</span>}
     </div>
   );
 }
@@ -1030,6 +1043,7 @@ function DecisionLesson({
   feedback,
   mode,
   onAsk,
+  onHide,
 }: {
   game: TrainingGameState;
   legal: TrainingLegalActions;
@@ -1037,6 +1051,7 @@ function DecisionLesson({
   feedback: TeacherFeedback | null;
   mode: TeacherMode;
   onAsk: () => void;
+  onHide: () => void;
 }) {
   const availableActions: TrainingActionType[] = [
     ...(legal.canFold ? ["fold" as const] : []),
@@ -1050,7 +1065,12 @@ function DecisionLesson({
     <section className={styles.decisionLesson} aria-label="Professor da jogada" aria-live="polite">
       <div className={styles.lessonHeader}>
         <h2><Brain size={17} aria-hidden="true" /> Entenda a jogada</h2>
-        <span>{STREET_LABELS[game.street]}</span>
+        <div className={styles.lessonHeaderActions}>
+          <span>{STREET_LABELS[game.street]}</span>
+          <button type="button" onClick={onHide} aria-label="Ocultar ajuda">
+            <EyeOff size={14} aria-hidden="true" /> Ocultar
+          </button>
+        </div>
       </div>
 
       <div className={styles.lessonSteps}>
@@ -1099,11 +1119,13 @@ function TeacherPanel({
   mode,
   canAsk,
   onAsk,
+  onHide,
 }: {
   feedback: TeacherFeedback | null;
   mode: TeacherMode;
   canAsk: boolean;
   onAsk: () => void;
+  onHide: () => void;
 }) {
   if (!feedback) {
     return (
@@ -1121,6 +1143,9 @@ function TeacherPanel({
             <CircleHelp size={16} /> Pedir uma dica
           </button>
         )}
+        <button type="button" className={styles.teacherHideButton} onClick={onHide}>
+          <EyeOff size={16} aria-hidden="true" /> Ocultar ajuda
+        </button>
       </aside>
     );
   }
@@ -1151,6 +1176,9 @@ function TeacherPanel({
         <Sparkles size={16} />
         <span>{feedback.teachingPoint}</span>
       </div>
+      <button type="button" className={styles.teacherHideButton} onClick={onHide}>
+        <EyeOff size={16} aria-hidden="true" /> Ocultar ajuda
+      </button>
     </aside>
   );
 }
@@ -1668,7 +1696,12 @@ function GameTable({
   legal,
   teacherFeedback,
   teacherMode,
+  teacherVisible,
+  revealing,
   onAskHint,
+  onHideTeacher,
+  onShowTeacher,
+  onShowSummary,
   onAction,
 }: {
   game: TrainingGameState;
@@ -1676,7 +1709,12 @@ function GameTable({
   legal: TrainingLegalActions | null;
   teacherFeedback: TeacherFeedback | null;
   teacherMode: TeacherMode;
+  teacherVisible: boolean;
+  revealing: boolean;
   onAskHint: () => void;
+  onHideTeacher: () => void;
+  onShowTeacher: () => void;
+  onShowSummary: () => void;
   onAction: (decision: TrainingDecision) => void;
 }) {
   const hero = game.players.find((player) => player.isHero)!;
@@ -1692,11 +1730,15 @@ function GameTable({
     <section className={styles.tableColumn}>
       <div className={styles.tableStatus}>
         <span>{STREET_LABELS[game.street]} · mão {game.handNumber}</span>
-        <strong key={`${thinking}-${heroTurn}-${game.currentPlayerSeat}`} className={styles.statusChanged} aria-live="polite">
-          {thinking ? <><LoaderCircle className={styles.spinner} size={16} /> Adversário pensando</> : heroTurn ? "Sua vez" : "Mão em andamento"}
+        <strong key={`${thinking}-${revealing}-${heroTurn}-${game.currentPlayerSeat}`} className={styles.statusChanged} aria-live="polite">
+          {thinking ? <><LoaderCircle className={styles.spinner} size={16} /> Adversário pensando</> : revealing ? "Cartas reveladas" : heroTurn ? "Sua vez" : "Mão em andamento"}
         </strong>
       </div>
-      <div className={styles.pokerTable} role="group" aria-label="Mesa de poker">
+      <div
+        className={`${styles.pokerTable} ${revealing ? styles.revealingTable : ""}`}
+        role="group"
+        aria-label="Mesa de poker"
+      >
         <div className={styles.feltMark}><Spade size={18} /> MESA CERTA</div>
         {game.players.map((player) => (
           <PlayerSeat key={player.id} player={player} game={game} />
@@ -1724,7 +1766,17 @@ function GameTable({
           <span key={game.street} className={`${styles.streetLabel} ${styles.streetChanged}`}>
             {STREET_LABELS[game.street]}
           </span>
-          {latestAction && (
+          {revealing ? (
+            <div className={styles.showdownBanner} role="status" aria-live="assertive">
+              <span><Sparkles size={15} aria-hidden="true" /> Revelação didática</span>
+              <strong>{game.result?.summary}</strong>
+              <small>
+                {game.street === "showdown"
+                  ? "Compare as cartas e observe por que essa mão venceu."
+                  : "No treino, mostramos as cartas mesmo quando a mão termina antes do showdown."}
+              </small>
+            </div>
+          ) : latestAction && (
             <span key={latestAction.id} className={styles.lastAction} aria-live="polite">
               <small>Última ação</small>
               <strong>{latestAction.playerName}</strong> {ACTION_LABELS[latestAction.action]}
@@ -1737,16 +1789,31 @@ function GameTable({
       <div className={styles.decisionDock}>
         {heroTurn && legal ? (
           <>
-            <DecisionLesson
-              game={game}
-              legal={legal}
-              latestAction={latestAction}
-              feedback={teacherFeedback}
-              mode={teacherMode}
-              onAsk={onAskHint}
-            />
+            {teacherVisible ? (
+              <DecisionLesson
+                game={game}
+                legal={legal}
+                latestAction={latestAction}
+                feedback={teacherFeedback}
+                mode={teacherMode}
+                onAsk={onAskHint}
+                onHide={onHideTeacher}
+              />
+            ) : (
+              <button type="button" className={styles.teacherRestoreButton} onClick={onShowTeacher}>
+                <Eye size={16} aria-hidden="true" /> Mostrar ajuda nesta decisão
+              </button>
+            )}
             <ActionControls legal={legal} onAction={onAction} />
           </>
+        ) : revealing ? (
+          <section className={styles.revealWaitingPanel} aria-label="Cartas sendo reveladas">
+            <Sparkles size={18} aria-hidden="true" />
+            <span>Observe as mãos abertas antes do resumo.</span>
+            <button type="button" onClick={onShowSummary}>
+              Entendi, ver resumo <ChevronRight size={15} aria-hidden="true" />
+            </button>
+          </section>
         ) : (
           <section className={styles.waitingPanel}>
             {thinking ? <LoaderCircle className={styles.spinner} size={18} /> : <Bot size={18} />}
@@ -1782,6 +1849,8 @@ function ActiveTraining({
 }) {
   const [thinking, setThinking] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [teacherVisible, setTeacherVisible] = useState(true);
+  const [summaryVisible, setSummaryVisible] = useState(false);
   const [latestFeedback, setLatestFeedback] = useState<TeacherFeedback | null>(
     feedback.at(-1) ?? null,
   );
@@ -1840,6 +1909,9 @@ function ActiveTraining({
     if (heroTurn) setShowHint(false);
   }, [game.handNumber, game.street, game.actions.length, heroTurn]);
 
+  const handFinished =
+    game.status === "handComplete" || game.status === "sessionComplete";
+
   const performAction = (decision: TrainingDecision) => {
     const evaluation = evaluateHeroDecision(game, decision);
     if (evaluation) {
@@ -1864,6 +1936,7 @@ function ActiveTraining({
   const nextHand = () => {
     setLatestFeedback(null);
     setShowHint(false);
+    setSummaryVisible(false);
     onGameChange(startNextTrainingHand(game));
   };
 
@@ -1895,26 +1968,33 @@ function ActiveTraining({
         </div>
       </header>
 
-      <div className={styles.gameLayout}>
+      <div className={`${styles.gameLayout} ${!teacherVisible ? styles.teacherHiddenLayout : ""}`}>
         <GameTable
           game={game}
           thinking={thinking}
           legal={legal}
           teacherFeedback={visibleTeacher}
           teacherMode={game.config.teacherMode}
+          teacherVisible={teacherVisible}
+          revealing={handFinished && !summaryVisible && !overlayPending}
           onAskHint={() => setShowHint(true)}
+          onHideTeacher={() => setTeacherVisible(false)}
+          onShowTeacher={() => setTeacherVisible(true)}
+          onShowSummary={() => setSummaryVisible(true)}
           onAction={performAction}
         />
-        <TeacherPanel
-          feedback={visibleTeacher}
-          mode={game.config.teacherMode}
-          canAsk={heroTurn}
-          onAsk={() => setShowHint(true)}
-        />
+        {teacherVisible && (
+          <TeacherPanel
+            feedback={visibleTeacher}
+            mode={game.config.teacherMode}
+            canAsk={heroTurn}
+            onAsk={() => setShowHint(true)}
+            onHide={() => setTeacherVisible(false)}
+          />
+        )}
       </div>
 
-      {!overlayPending &&
-        (game.status === "handComplete" || game.status === "sessionComplete") && (
+      {!overlayPending && handFinished && summaryVisible && (
         <HandSummary
           game={game}
           handFeedback={handFeedback}

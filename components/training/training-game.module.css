@@ -735,6 +735,11 @@
   padding: 20px 0 40px;
 }
 
+.teacherHiddenLayout {
+  width: min(1100px, calc(100% - 32px));
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .tableColumn {
   display: grid;
   gap: 12px;
@@ -825,12 +830,43 @@
 }
 
 .heroSeat .seatCards {
-  height: 53px;
+  height: 62px;
 }
 
 .heroSeat .seatCards .card {
-  width: 38px;
-  height: 52px;
+  width: 44px;
+  height: 60px;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-900) 12%, transparent);
+  border-radius: 11px;
+  background:
+    linear-gradient(145deg, var(--color-neutral-100), var(--color-bg));
+  box-shadow:
+    0 9px 18px color-mix(in srgb, var(--color-neutral-900) 20%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-100) 75%, transparent);
+}
+
+.heroSeat .seatCards .card:first-child {
+  rotate: -3deg;
+  transform-origin: 100% 100%;
+}
+
+.heroSeat .seatCards .card:last-child {
+  rotate: 3deg;
+  transform-origin: 0 100%;
+}
+
+.heroSeat .seatCards .cardRank {
+  top: 6px;
+  left: 7px;
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.heroSeat .seatCards .cardSuit {
+  right: 6px;
+  bottom: 5px;
+  font-size: 25px;
 }
 
 .seatBody {
@@ -936,8 +972,42 @@
   opacity: 0.48;
 }
 
+.finishedSeat,
+.foldedSeat.finishedSeat {
+  filter: none;
+  opacity: 1;
+}
+
+.revealedSeat {
+  filter: none;
+  opacity: 1;
+}
+
+.foldedSeat.revealedSeat {
+  opacity: 1;
+}
+
+.revealedSeat .seatCards .card {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--color-neutral-900) 22%, transparent);
+}
+
+.winnerSeat {
+  z-index: 5;
+  opacity: 1;
+}
+
+.winnerSeat .seatBody {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--color-accent-300) 65%, transparent),
+    0 10px 25px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  animation: winnerGlow 1.1s ease-in-out infinite alternate;
+}
+
 .styleTag,
-.stateTag {
+.stateTag,
+.winnerTag {
   padding: 3px 6px;
   border-radius: 999px;
   color: var(--color-accent-2-700);
@@ -948,8 +1018,17 @@
 
 .stateTag {
   position: absolute;
-  top: 36px;
+  top: -7px;
+  right: 0;
   color: var(--color-accent-700);
+}
+
+.winnerTag {
+  position: absolute;
+  top: -7px;
+  right: 0;
+  color: var(--color-neutral-100);
+  background: var(--color-accent-700);
 }
 
 .tableCenter {
@@ -1094,7 +1173,13 @@
   letter-spacing: -0.025em;
 }
 
-.lessonHeader > span {
+.lessonHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lessonHeaderActions > span {
   padding: 5px 7px;
   border-radius: 999px;
   color: var(--color-accent-2-700);
@@ -1103,6 +1188,20 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.lessonHeaderActions > button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  color: var(--color-neutral-700);
+  background: var(--color-neutral-100);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .lessonSteps {
@@ -1200,6 +1299,31 @@
   background: color-mix(in srgb, var(--color-accent) 7%, var(--color-neutral-100));
   font-size: 12px;
   font-weight: 700;
+}
+
+.teacherRestoreButton,
+.teacherHideButton {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-700);
+  background: var(--color-neutral-100);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.teacherRestoreButton {
+  color: var(--color-accent-800);
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-neutral-100));
+}
+
+.teacherHideButton {
+  width: 100%;
 }
 
 .lessonReviewNote {
@@ -1387,7 +1511,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
-  color: var(--color-neutral-600);
+  color: var(--color-neutral-900);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1411,14 +1535,14 @@
   padding: 5px 8px;
   border: 1px solid var(--color-divider);
   border-radius: 999px;
-  color: var(--color-neutral-700);
+  color: var(--color-neutral-900);
   background: color-mix(in srgb, var(--color-text) 2%, transparent);
   font-size: 11px;
   animation: actionArrive 260ms ease-out both;
 }
 
 .actionLogItem strong {
-  color: var(--color-neutral-700);
+  color: var(--color-neutral-900);
 }
 
 .lastAction {
@@ -1445,6 +1569,75 @@
 
 .lastAction strong {
   color: var(--color-accent-700);
+}
+
+.revealingTable {
+  animation: revealTable 1.7s ease-in-out both;
+}
+
+.showdownBanner {
+  width: min(245px, 64vw);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-neutral-100) 94%, transparent);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--color-neutral-900) 25%, transparent);
+  text-align: center;
+  animation: showdownBannerArrive 420ms ease-out 180ms both;
+}
+
+.showdownBanner > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-accent-700);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.showdownBanner > strong {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.showdownBanner > small {
+  color: var(--color-neutral-700);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.revealWaitingPanel {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--color-accent-800);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revealWaitingPanel button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--color-neutral-100);
+  background: var(--color-accent-700);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .potChanged {
@@ -2455,6 +2648,27 @@
   }
 }
 
+@keyframes revealTable {
+  0% { filter: brightness(0.9); }
+  45%, 100% { filter: brightness(1.04); }
+}
+
+@keyframes showdownBannerArrive {
+  from {
+    opacity: 0;
+    transform: translateY(9px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes winnerGlow {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+
 @keyframes activeSeatPulse {
   0%, 100% {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent),
@@ -2724,9 +2938,10 @@
     display: none;
   }
 
-  .stateTag {
+  .stateTag,
+  .winnerTag {
     z-index: 4;
-    top: 27px;
+    top: -5px;
     right: 2px;
     padding: 2px 5px;
     font-size: 9px;
@@ -2746,12 +2961,12 @@
   }
 
   .heroSeat .seatCards {
-    height: 42px;
+    height: 59px;
   }
 
   .heroSeat .seatCards .card {
-    width: 30px;
-    height: 41px;
+    width: 42px;
+    height: 58px;
   }
 
   .seatCards .cardRank {
@@ -2764,6 +2979,18 @@
     right: 3px;
     bottom: 2px;
     font-size: 15px;
+  }
+
+  .heroSeat .seatCards .cardRank {
+    top: 6px;
+    left: 7px;
+    font-size: 16px;
+  }
+
+  .heroSeat .seatCards .cardSuit {
+    right: 6px;
+    bottom: 5px;
+    font-size: 24px;
   }
 
   .boardCards {
@@ -2800,6 +3027,14 @@
     border: 1px solid color-mix(in srgb, var(--color-accent-2) 22%, transparent);
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-accent-2) 5%, var(--color-bg));
+  }
+
+  .showdownBanner > small {
+    display: none;
+  }
+
+  .revealWaitingPanel button {
+    width: 100%;
   }
 
   .teacherPanel {
@@ -2892,6 +3127,13 @@
     padding: 10px;
   }
 
+  .lessonHeaderActions > button {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
   .actionPrompt {
     align-items: flex-start;
     flex-direction: column;
@@ -2917,6 +3159,9 @@
   .currentSeat .seatBody,
   .dealtCard,
   .revealedCard,
+  .revealingTable,
+  .winnerSeat .seatBody,
+  .showdownBanner,
   .potChanged,
   .streetChanged,
   .statusChanged,

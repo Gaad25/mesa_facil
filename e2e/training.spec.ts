@@ -82,6 +82,23 @@ test("inicia, conclui, revisa e restaura uma sessão de treino", async ({ page }
   await startHeadsUpTraining(page);
 
   await page.getByRole("button", { name: "Fold", exact: true }).click();
+  const reveal = page.getByRole("status").filter({ hasText: "Revelação didática" });
+  await expect(reveal).toBeVisible();
+  await expect(reveal).toContainText(/venceu|levou o pote/);
+
+  const opponentCards = page.getByLabel(/^Lia,/).getByRole("img", { name: / de / });
+  await expect(opponentCards).toHaveCount(2);
+  const revealAnimation = await opponentCards.first().evaluate(
+    (element) => getComputedStyle(element).animationName,
+  );
+  expect(revealAnimation).not.toBe("none");
+  await page.waitForTimeout(900);
+  const revealA11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(formatViolations(revealA11y.violations)).toEqual([]);
+
+  await page.getByRole("button", { name: /Entendi, ver resumo/ }).click();
   const summary = page.getByRole("dialog");
   await expect(summary).toBeVisible();
   await expect(summary.getByText(/Mão 1 concluída|Sessão concluída/)).toBeVisible();
@@ -93,6 +110,10 @@ test("inicia, conclui, revisa e restaura uma sessão de treino", async ({ page }
   await page.getByRole("button", { name: "Fechar histórico" }).click();
 
   await page.reload();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Revelação didática" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Entendi, ver resumo/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText(/Mesa de treino · (bots adaptativos|GTO aproximado)/)).toBeVisible();
 });
@@ -163,6 +184,15 @@ test("mantém assentos legíveis e explica a decisão no celular", async ({ page
   await expect(lesson.getByText("O que aconteceu")).toBeVisible();
   await expect(lesson.getByText("Sua decisão agora")).toBeVisible();
   await expect(lesson.getByText("Professor recomenda")).toBeVisible();
+
+  await lesson.getByRole("button", { name: "Ocultar ajuda" }).click();
+  await expect(lesson).toBeHidden();
+  const restoreTeacher = page.getByRole("button", {
+    name: "Mostrar ajuda nesta decisão",
+  });
+  await expect(restoreTeacher).toBeVisible();
+  await restoreTeacher.click();
+  await expect(lesson).toBeVisible();
 
   const table = page.getByRole("group", { name: "Mesa de poker" });
   const tableBox = await table.boundingBox();
