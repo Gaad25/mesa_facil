@@ -253,6 +253,12 @@ test("mantém assentos legíveis e explica a decisão no celular", async ({ page
 
   const seats = page.locator("[data-training-seat]");
   await expect(seats).toHaveCount(6);
+  await expect(
+    seats.nth(0).locator(":scope > div:nth-child(2) strong"),
+  ).toContainText("VocêBTN");
+  await expect(seats.locator("[class*='positionLabel']")).toHaveText([
+    "BTN", "SB", "BB", "UTG", "MP", "CO",
+  ]);
   for (let index = 0; index < 6; index += 1) {
     const seat = seats.nth(index);
     const seatBox = await seat.boundingBox();

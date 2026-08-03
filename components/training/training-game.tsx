@@ -74,6 +74,7 @@ import {
 } from "@/lib/training/progress-transfer";
 import { heroModelFromProgress } from "@/lib/training/player-model";
 import { createSessionSeed } from "@/lib/training/random";
+import { trainingTablePosition } from "@/lib/training/table-positions";
 import {
   clearTrainingSession,
   loadTrainingProgress,
@@ -837,6 +838,13 @@ function PlayerSeat({
   const reveal = player.isHero || handFinished;
   const revealingOpponent = handFinished && !player.isHero;
   const winner = handFinished && Boolean(game.result?.winnerIds.includes(player.id));
+  const position = trainingTablePosition(
+    game.players,
+    player.seat,
+    game.dealerSeat,
+    game.smallBlindSeat,
+    game.bigBlindSeat,
+  );
   const role =
     player.seat === game.dealerSeat
       ? "D"
@@ -855,7 +863,7 @@ function PlayerSeat({
       style={seatPosition(player, game.players.length)}
       data-training-seat={player.seat}
       aria-label={`${player.isHero ? "Você" : player.name}, ${formatChips(player.stack)} fichas${
-        role ? `, posição ${role}` : ""
+        position ? `, posição ${position}` : ""
       }${player.folded ? ", desistiu" : player.allIn ? ", all-in" : ""}`}
     >
       <div className={styles.seatCards}>
@@ -876,7 +884,10 @@ function PlayerSeat({
       <div className={styles.seatBody}>
         <span className={styles.avatar}>{player.isHero ? "EU" : player.name[0]}</span>
         <span className={styles.seatMeta}>
-          <strong>{player.name}</strong>
+          <strong>
+            <span className={styles.playerName}>{player.name}</span>
+            {position && <span className={styles.positionLabel}>{position}</span>}
+          </strong>
           <small>
             {formatChips(player.stack)}<span className={styles.chipWord}> fichas</span>
           </small>
@@ -1469,6 +1480,13 @@ function TrainingHistoryDialog({
                       : player.seat === selected.bigBlindSeat
                         ? "BB"
                         : null;
+                const position = trainingTablePosition(
+                  frame.players,
+                  player.seat,
+                  selected.dealerSeat,
+                  selected.smallBlindSeat,
+                  selected.bigBlindSeat,
+                );
                 return (
                   <div
                     key={player.id}
@@ -1486,7 +1504,11 @@ function TrainingHistoryDialog({
                       ))}
                     </div>
                     <span>
-                      <strong>{player.name} {role && <em>{role}</em>}</strong>
+                      <strong>
+                        {player.name}
+                        {position && <span className={styles.positionLabel}>{position}</span>}
+                        {role && <em>{role}</em>}
+                      </strong>
                       <small>
                         {formatChips(player.stack)} fichas
                         {player.committedStreet > 0
